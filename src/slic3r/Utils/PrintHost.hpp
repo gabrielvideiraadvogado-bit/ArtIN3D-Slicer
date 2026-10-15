@@ -89,6 +89,12 @@ public:
 
     static PrintHost* get_print_host(DynamicPrintConfig *config);
     static std::string get_print_host_webui(DynamicPrintConfig *config);
+    // ArtIN3D: used by the printer manager ported from ElegooSlicer.
+    static PrintHostType get_print_host_type(const DynamicPrintConfig &config);
+    static PrintHostType get_print_host_type(const std::string &host_type_str);
+    static std::string get_print_host_type_str(const PrintHostType host_type);
+    // Printers whose connection is managed from the Printers tab instead of a physical printer.
+    static bool support_device_list_management(const DynamicPrintConfig &config);
     // Reads the "err" field of a JSON reply, 0 when absent. Returns -1 when the body is not valid JSON.
     static int get_err_code_from_body(const std::string &body);
 

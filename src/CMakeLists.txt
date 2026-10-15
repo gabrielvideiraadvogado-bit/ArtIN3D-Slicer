@@ -159,6 +159,8 @@ if (APPLE)
     # A linker flag rather than the BUILD_RPATH property because the release
     # flow uses the Xcode generator, which does not honor BUILD_RPATH.
     target_link_options(OrcaSlicer PRIVATE "LINKER:-rpath,@executable_path/python/lib")
+    # ArtIN3D: Agora frameworks used by the Elegoo connection live in Contents/Frameworks.
+    target_link_options(OrcaSlicer PRIVATE "LINKER:-rpath,@executable_path/../Frameworks")
 elseif (UNIX AND NOT WIN32)
     set_target_properties(OrcaSlicer PROPERTIES
         # Build tree + AppImage, which packages the build-tree binary.
@@ -355,6 +357,15 @@ else ()
             # Ninja/CI packaging path (build_release_macos.sh, build_orca.yml).
             set_target_properties(OrcaSlicer PROPERTIES XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
         endif()
+        # ArtIN3D: copy the Agora frameworks (installed by elegoolink into the deps bin dir)
+        # into the bundle, keeping their internal symlinks.
+        add_custom_command(TARGET OrcaSlicer POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${BIN_DIR}/../Frameworks"
+            COMMAND rm -rf "${BIN_DIR}/../Frameworks/AgoraRtmKit.framework" "${BIN_DIR}/../Frameworks/aosl.framework"
+            COMMAND rsync -a "${CMAKE_PREFIX_PATH}/bin/AgoraRtmKit.framework" "${BIN_DIR}/../Frameworks/"
+            COMMAND rsync -a "${CMAKE_PREFIX_PATH}/bin/aosl.framework" "${BIN_DIR}/../Frameworks/"
+            COMMENT "Copying Agora frameworks into the app bundle"
+            VERBATIM)
     endif()
     add_custom_command(TARGET OrcaSlicer POST_BUILD
         COMMAND ln -sfn "${SLIC3R_RESOURCES_DIR}" "${BIN_RESOURCES_DIR}"

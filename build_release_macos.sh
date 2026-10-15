@@ -334,6 +334,12 @@ function lipo_dir() {
     while IFS= read -r -d '' f; do
         local rel="${f#"$universal_dir"/}"
         local x86="$x86_64_dir/$rel"
+        # ArtIN3D: binaries shipped prebuilt as universal (the Agora frameworks the
+        # Elegoo connection uses) already hold both slices; lipo -create would refuse them.
+        if lipo -info "$f" 2>/dev/null | grep -q "x86_64" && lipo -info "$f" 2>/dev/null | grep -q "arm64"; then
+            echo "  already universal: $rel"
+            continue
+        fi
         if [ -f "$x86" ]; then
             echo "  lipo: $rel"
             lipo -create "$f" "$x86" -output "$f.tmp"

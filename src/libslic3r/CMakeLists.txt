@@ -423,6 +423,13 @@ set(lisbslic3r_sources
     MaterialType.hpp
     PrintConfig.cpp
     PrintConfig.hpp
+    # ArtIN3D: tipos usados pela conexão com impressoras Elegoo
+    PrinterNetworkInfo.cpp
+    PrinterNetworkInfo.hpp
+    PrinterNetworkResult.cpp
+    PrinterNetworkResult.hpp
+    StandardColorMatcher.cpp
+    StandardColorMatcher.hpp
     Print.cpp
     Print.hpp
     PrintObject.cpp

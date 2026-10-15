@@ -802,6 +802,58 @@ set(SLIC3R_GUI_SOURCES
     Utils/PresetUpdater.hpp
     Utils/PrintHost.cpp
     Utils/PrintHost.hpp
+    # ArtIN3D: impressoras Elegoo (conta e rede local), portado do ElegooSlicer
+    Utils/Singleton.hpp
+    Utils/JsonUtils.hpp
+    Utils/IPCMessage.cpp
+    Utils/IPCMessage.hpp
+    Utils/WebviewIPCManager.h
+    Utils/WebviewIPCManager.cpp
+    Utils/Elegoo/PrinterCache.cpp
+    Utils/Elegoo/PrinterCache.hpp
+    Utils/Elegoo/PrinterManager.cpp
+    Utils/Elegoo/PrinterManager.hpp
+    Utils/Elegoo/PrinterMmsManager.cpp
+    Utils/Elegoo/PrinterMmsManager.hpp
+    Utils/Elegoo/PrinterPluginManager.cpp
+    Utils/Elegoo/PrinterPluginManager.hpp
+    Utils/Elegoo/PrinterUploadManager.cpp
+    Utils/Elegoo/PrinterUploadManager.hpp
+    Utils/Elegoo/IPCCommon.hpp
+    Utils/Elegoo/IPCServer.cpp
+    Utils/Elegoo/IPCServer.hpp
+    Utils/Elegoo/IPCClient.cpp
+    Utils/Elegoo/IPCClient.hpp
+    Utils/Elegoo/UserNetworkManager.cpp
+    Utils/Elegoo/UserNetworkManager.hpp
+    Utils/Elegoo/UserDataStorage.cpp
+    Utils/Elegoo/UserDataStorage.hpp
+    Utils/Elegoo/PrinterNetwork.cpp
+    Utils/Elegoo/PrinterNetwork.hpp
+    Utils/Elegoo/PrinterNetworkEvent.cpp
+    Utils/Elegoo/PrinterNetworkEvent.hpp
+    Utils/Elegoo/ElegooNetworkHelper.cpp
+    Utils/Elegoo/ElegooNetworkHelper.hpp
+    Utils/Elegoo/ElegooUtils.cpp
+    Utils/Elegoo/ElegooUtils.hpp
+    Utils/Elegoo/ElegooLink.cpp
+    Utils/Elegoo/ElegooLink.hpp
+    Utils/Elegoo/ElegooPrinterNetwork.cpp
+    Utils/Elegoo/ElegooPrinterNetwork.hpp
+    Utils/Elegoo/ElegooUserNetwork.cpp
+    Utils/Elegoo/ElegooUserNetwork.hpp
+    Utils/Elegoo/ElegooPluginNetwork.cpp
+    Utils/Elegoo/ElegooPluginNetwork.hpp
+    Utils/Elegoo/MultiInstanceCoordinator.cpp
+    Utils/Elegoo/MultiInstanceCoordinator.hpp
+    GUI/Elegoo/ElegooDialog.cpp
+    GUI/Elegoo/ElegooDialog.hpp
+    GUI/Elegoo/UserLoginView.cpp
+    GUI/Elegoo/UserLoginView.hpp
+    GUI/Elegoo/PrinterManagerView.cpp
+    GUI/Elegoo/PrinterManagerView.hpp
+    GUI/Elegoo/ElegooPrinterWebView.cpp
+    GUI/Elegoo/ElegooPrinterWebView.hpp
     Utils/Process.cpp
     Utils/Process.hpp
     Utils/RaycastManager.cpp
@@ -943,7 +995,9 @@ else()
     set(_opengl_link_lib OpenGL::GL)
 endif()
 
-target_link_libraries(libslic3r_gui libslic3r cereal::cereal imgui imguizmo minilzo libvgcode md4c-html glad ${_opengl_link_lib} hidapi mdns ${wxWidgets_LIBRARIES} glfw libcurl OpenSSL::SSL OpenSSL::Crypto LibDataChannel::LibDataChannel noise::noise pybind11::embed)
+# ArtIN3D: biblioteca de conexão da Elegoo
+find_package(elegoolink REQUIRED)
+target_link_libraries(libslic3r_gui libslic3r cereal::cereal imgui imguizmo minilzo libvgcode md4c-html glad ${_opengl_link_lib} hidapi mdns ${wxWidgets_LIBRARIES} glfw libcurl OpenSSL::SSL OpenSSL::Crypto LibDataChannel::LibDataChannel noise::noise pybind11::embed elegoolink::elegoolink)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     # Linux finds wxWidgets in module mode, whose include dirs and definitions

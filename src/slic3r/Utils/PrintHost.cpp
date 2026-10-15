@@ -95,6 +95,52 @@ PrintHost* PrintHost::get_print_host(DynamicPrintConfig *config)
     }
 }
 
+PrintHostType PrintHost::get_print_host_type(const DynamicPrintConfig &config)
+{
+    const auto opt = config.option<ConfigOptionEnum<PrintHostType>>("host_type");
+    return opt != nullptr ? opt->value : htOctoPrint;
+}
+
+bool PrintHost::support_device_list_management(const DynamicPrintConfig &config)
+{
+    return get_print_host_type(config) == htElegooLink;
+}
+
+PrintHostType PrintHost::get_print_host_type(const std::string &host_type_str)
+{
+    static const std::vector<std::pair<std::string, PrintHostType>> types = {
+        {"ElegooLink", htElegooLink}, {"OctoPrint", htOctoPrint},       {"PrusaLink", htPrusaLink},
+        {"PrusaConnect", htPrusaConnect}, {"Duet", htDuet},             {"FlashAir", htFlashAir},
+        {"AstroBox", htAstroBox},     {"Repetier", htRepetier},         {"MKS", htMKS},
+        {"ESP3D", htESP3D},           {"CrealityPrint", htCrealityPrint}, {"Obico", htObico},
+        {"Flashforge", htFlashforge}, {"SimplyPrint", htSimplyPrint}};
+    for (const auto &[name, type] : types)
+        if (name == host_type_str)
+            return type;
+    return htOctoPrint;
+}
+
+std::string PrintHost::get_print_host_type_str(const PrintHostType host_type)
+{
+    switch (host_type) {
+    case htElegooLink: return "ElegooLink";
+    case htOctoPrint: return "OctoPrint";
+    case htPrusaLink: return "PrusaLink";
+    case htPrusaConnect: return "PrusaConnect";
+    case htDuet: return "Duet";
+    case htFlashAir: return "FlashAir";
+    case htAstroBox: return "AstroBox";
+    case htRepetier: return "Repetier";
+    case htMKS: return "MKS";
+    case htESP3D: return "ESP3D";
+    case htCrealityPrint: return "CrealityPrint";
+    case htObico: return "Obico";
+    case htFlashforge: return "Flashforge";
+    case htSimplyPrint: return "SimplyPrint";
+    default: return "";
+    }
+}
+
 std::string PrintHost::get_print_host_webui(DynamicPrintConfig* config)
 {
     if (config == nullptr)

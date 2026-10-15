@@ -67,6 +67,7 @@
 #define TAB_ID_MULTI_DEVICE  "multi_device"
 #define TAB_ID_PROJECT       "project"
 #define TAB_ID_CALIBRATION   "calibration"
+#define TAB_ID_PRINTERS      "printers"
 
 #define ENABEL_PRINT_ALL 0
 
@@ -88,6 +89,7 @@ class DesignPanel;
 class MainFrame;
 class WebViewPanel;
 class ParamsDialog;
+class PrinterManagerView;
 enum class Shortcut : uint8_t;
 struct KeyChord;
 #ifdef __WXGTK__
@@ -521,6 +523,8 @@ public:
     LazyPage<ProjectPanel>* m_project_page{ nullptr };
 
     LazyPage<CalibrationPanel>* m_calibration_page{ nullptr };
+    // ArtIN3D: impressoras pela conta da marca ou pela rede local
+    LazyPage<PrinterManagerView>* m_printers_page{ nullptr };
     LazyPage<WebViewPanel>* m_home_page { nullptr };
     LazyPage<PrinterWebView>* m_printer_view_page{nullptr};
     PluginPages           m_plugin_pages;
@@ -580,6 +584,8 @@ public:
 wxDECLARE_EVENT(EVT_HTTP_ERROR, wxCommandEvent);
 wxDECLARE_EVENT(EVT_USER_LOGIN, wxCommandEvent);
 wxDECLARE_EVENT(EVT_USER_LOGIN_HANDLE, wxCommandEvent);
+// ArtIN3D: a conta Elegoo mudou (login, logout ou dados do usuário)
+wxDECLARE_EVENT(EVT_USER_INFO_UPDATED, wxCommandEvent);
 wxDECLARE_EVENT(EVT_CHECK_PRIVACY_VER, wxCommandEvent);
 wxDECLARE_EVENT(EVT_CHECK_PRIVACY_SHOW, wxCommandEvent);
 wxDECLARE_EVENT(EVT_SHOW_IP_DIALOG, wxCommandEvent);

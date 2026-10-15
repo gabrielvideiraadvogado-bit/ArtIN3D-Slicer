@@ -148,6 +148,13 @@
 #include "slic3r/GUI/Widgets/SideButton.hpp"
 #include "slic3r/plugin/host/PluginPages.hpp"
 #include "slic3r/Utils/NetworkAgent.hpp"
+// ArtIN3D: impressoras pela conta da marca ou pela rede local
+#include "Elegoo/PrinterManagerView.hpp"
+#include "slic3r/Utils/Elegoo/IPCClient.hpp"
+#include "slic3r/Utils/Elegoo/IPCServer.hpp"
+#include "slic3r/Utils/Elegoo/MultiInstanceCoordinator.hpp"
+#include "slic3r/Utils/Elegoo/PrinterManager.hpp"
+#include "slic3r/Utils/Elegoo/PrinterNetworkEvent.hpp"
 #include <wx/defs.h>
 #include <cassert>
 #include <wx/display.h>
@@ -163,6 +170,7 @@ wxDEFINE_EVENT(EVT_SELECT_TAB, wxCommandEvent);
 wxDEFINE_EVENT(EVT_HTTP_ERROR, wxCommandEvent);
 wxDEFINE_EVENT(EVT_USER_LOGIN, wxCommandEvent);
 wxDEFINE_EVENT(EVT_USER_LOGIN_HANDLE, wxCommandEvent);
+wxDEFINE_EVENT(EVT_USER_INFO_UPDATED, wxCommandEvent);
 wxDEFINE_EVENT(EVT_CHECK_PRIVACY_VER, wxCommandEvent);
 wxDEFINE_EVENT(EVT_CHECK_PRIVACY_SHOW, wxCommandEvent);
 wxDEFINE_EVENT(EVT_SHOW_IP_DIALOG, wxCommandEvent);
@@ -613,6 +621,32 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
     wxToolTip::SetAutoPop(32767);
 
     m_loaded = true;
+
+    // ArtIN3D: conexão com impressoras (Elegoo). Só a primeira janela aberta fala com as
+    // impressoras; as outras pedem a ela pela IPC, como no ElegooSlicer.
+    Bind(EVT_USER_INFO_UPDATED, [this](wxCommandEvent&) {
+        wxGetApp().CallAfter([this]() {
+            if (PrinterManagerView* view = m_printers_page ? m_printers_page->get() : nullptr)
+                view->refreshUserInfo();
+        });
+    });
+    MultiInstanceCoordinator::getInstance()->init();
+    wxGetApp().CallAfter([]() {
+        MultiInstanceCoordinator::getInstance()->registerMasterStatusCallback([](bool isMaster) {
+            if (isMaster) {
+                wxGetApp().CallAfter([]() {
+                    IPCClient::getInstance()->stop();
+                    PrinterManager::getInstance()->init();
+                    IPCServer::getInstance()->start();
+                });
+            }
+        });
+        PrinterManager::getInstance()->init();
+        if (MultiInstanceCoordinator::getInstance()->isMaster())
+            IPCServer::getInstance()->start();
+        else
+            IPCClient::getInstance()->start();
+    });
 
     // initialize layout
     m_main_sizer = new wxBoxSizer(wxVERTICAL);
@@ -1337,6 +1371,18 @@ void MainFrame::shutdown()
 //             m_plater->print = undef;
 //         Slic3r::GUI::deregister_on_request_update_callback();
 
+    // ArtIN3D: desliga as conexões com impressoras antes do GUI_App::shutdown(), que limpa
+    // os WebViews, para nenhuma conexão em segundo plano tocar uma página já destruída.
+    Slic3r::disconnectAllPrinterNetworkEvents();
+    if (m_printers_page != nullptr) {
+        const int idx = m_tabpanel->FindPageByName(TAB_ID_PRINTERS);
+        if (idx != wxNOT_FOUND)
+            m_tabpanel->RemovePage(idx);
+    }
+    IPCServer::getInstance()->stop();
+    IPCClient::getInstance()->stop();
+    PrinterManager::getInstance()->close();
+
     // set to null tabs and a plater
     // to avoid any manipulations with them from App->wxEVT_IDLE after of the mainframe closing
     wxGetApp().tabs_list.clear();
@@ -1345,6 +1391,7 @@ void MainFrame::shutdown()
     // BBS: why clear ?
     //wxGetApp().plater_ = nullptr;
 
+    MultiInstanceCoordinator::getInstance()->uninit();
     BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << "MainFrame::shutdown exit";
 }
 
@@ -1555,6 +1602,18 @@ void MainFrame::init_tabpanel() {
     m_calibration_page = new LazyPage<CalibrationPanel>(m_tabpanel, TAB_ID_CALIBRATION, 30);
     m_lazy_pages.push_back(m_calibration_page);
     m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration_page, _L("Calibration"), "tab_calibration_active");
+
+    // ArtIN3D: impressoras de todas as marcas, sempre visível, independente da impressora selecionada.
+    m_printers_page = new LazyPage<PrinterManagerView>(m_tabpanel, TAB_ID_PRINTERS, 70, [](wxWindow* parent) {
+        auto* view = new PrinterManagerView(parent);
+        view->CallAfter([view]() {
+            if (!wxGetApp().is_closing() && !view->IsBeingDeleted())
+                view->initializeWebView();
+        });
+        return view;
+    });
+    m_lazy_pages.push_back(m_printers_page);
+    m_tabpanel->AddPage(TAB_ID_PRINTERS, m_printers_page, _L("Printers"), "tab_monitor_active");
 
     // Plugin pages are appended after the built-in tabs; their ids are namespaced
     // (plugin.<plugin_key>.<name>) so they can't collide with the built-in TAB_ID_* constants.
