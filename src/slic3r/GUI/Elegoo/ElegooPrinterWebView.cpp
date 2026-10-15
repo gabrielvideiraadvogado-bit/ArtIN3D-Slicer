@@ -291,7 +291,8 @@ void ElegooPrinterWebView::setupIPCHandlers()
         BOOST_LOG_TRIVIAL(info) << __FUNCTION__ << boost::format(": open URL: %s") % url;
         if (needDownload && m_printerModel == "Elegoo Centauri Carbon") {
             CallAfter([this, url]() {
-                GUI::wxGetApp().download(url);
+                // ArtIN3D: the Orca equivalent of ElegooSlicer's GUI_App::download().
+                GUI::wxGetApp().start_download(url);
             });
         } else {
             CallAfter([this, url]() {

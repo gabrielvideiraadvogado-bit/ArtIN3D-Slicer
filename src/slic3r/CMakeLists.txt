@@ -836,8 +836,8 @@ set(SLIC3R_GUI_SOURCES
     Utils/Elegoo/ElegooNetworkHelper.hpp
     Utils/Elegoo/ElegooUtils.cpp
     Utils/Elegoo/ElegooUtils.hpp
-    Utils/Elegoo/ElegooLink.cpp
-    Utils/Elegoo/ElegooLink.hpp
+    Utils/Elegoo/ElegooLinkManager.cpp
+    Utils/Elegoo/ElegooLinkManager.hpp
     Utils/Elegoo/ElegooPrinterNetwork.cpp
     Utils/Elegoo/ElegooPrinterNetwork.hpp
     Utils/Elegoo/ElegooUserNetwork.cpp

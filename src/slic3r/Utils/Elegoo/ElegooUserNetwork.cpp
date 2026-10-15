@@ -1,5 +1,5 @@
 #include "ElegooUserNetwork.hpp"
-#include "ElegooLink.hpp"
+#include "ElegooLinkManager.hpp"
 #include "libslic3r/PrinterNetworkResult.hpp"
 #include <boost/log/trivial.hpp>
 #include <string>
@@ -32,63 +32,63 @@ ElegooUserNetwork::~ElegooUserNetwork(){
 
 PrinterNetworkResult<UserNetworkInfo> ElegooUserNetwork::connectToIot(const UserNetworkInfo& userInfo)
 {
-    auto result = ElegooLink::getInstance()->connectToIot(userInfo);
+    auto result = ElegooLinkManager::getInstance()->connectToIot(userInfo);
     return logUserLinkFailure(__FUNCTION__, std::move(result), std::string("userId=") + userInfo.userId);
 }
 PrinterNetworkResult<UserNetworkInfo> ElegooUserNetwork::getRtcToken()
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->getRtcToken(),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->getRtcToken(),
                              std::string("userId=") + getUserNetworkInfo().userId);
 }
 
 PrinterNetworkResult<UserNetworkInfo> ElegooUserNetwork::refreshToken(const UserNetworkInfo& userInfo)
 {
     updateUserNetworkInfo(userInfo);
-    auto result = ElegooLink::getInstance()->refreshToken(userInfo);
+    auto result = ElegooLinkManager::getInstance()->refreshToken(userInfo);
     return logUserLinkFailure(__FUNCTION__, std::move(result), std::string("userId=") + userInfo.userId);
 }
 
 PrinterNetworkResult<std::vector<PrinterNetworkInfo>> ElegooUserNetwork::getUserBoundPrinters()
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->getUserBoundPrinters(),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->getUserBoundPrinters(),
                              std::string("userId=") + getUserNetworkInfo().userId);
 }
 
 PrinterNetworkResult<bool> ElegooUserNetwork::setRegion(const std::string& region, const std::string& iotUrl)
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->setRegion(region, iotUrl),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->setRegion(region, iotUrl),
                              std::string("userId=") + getUserNetworkInfo().userId + ", region=" + region);
 }
 
 PrinterNetworkResult<bool> ElegooUserNetwork::logout()
 {
     const UserNetworkInfo userInfo = getUserNetworkInfo();
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->logout(userInfo),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->logout(userInfo),
                              std::string("userId=") + userInfo.userId);
 }
 
 
 PrinterNetworkResult<PrinterNetworkInfo> ElegooUserNetwork::bindWANPrinter(const PrinterNetworkInfo& printerNetworkInfo)
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->bindWANPrinter(printerNetworkInfo),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->bindWANPrinter(printerNetworkInfo),
                              std::string("userId=") + getUserNetworkInfo().userId + ", serialNumber=" + printerNetworkInfo.serialNumber);
 }
 
 PrinterNetworkResult<bool> ElegooUserNetwork::unbindWANPrinter(const std::string& serialNumber)
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->unbindWANPrinter(serialNumber),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->unbindWANPrinter(serialNumber),
                              std::string("userId=") + getUserNetworkInfo().userId + ", serialNumber=" + serialNumber);
 }
 
 PrinterNetworkResult<std::vector<LicenseExpiredDevice>> ElegooUserNetwork::getLicenseExpiredDevices()
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->getLicenseExpiredDevices(),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->getLicenseExpiredDevices(),
                              std::string("userId=") + getUserNetworkInfo().userId);
 }
 
 PrinterNetworkResult<bool> ElegooUserNetwork::renewLicense(const std::string& serialNumber)
 {
-    return logUserLinkFailure(__FUNCTION__, ElegooLink::getInstance()->renewLicense(serialNumber),
+    return logUserLinkFailure(__FUNCTION__, ElegooLinkManager::getInstance()->renewLicense(serialNumber),
                              std::string("userId=") + getUserNetworkInfo().userId + ", serialNumber=" + serialNumber);
 }
 } // namespace Slic3r 

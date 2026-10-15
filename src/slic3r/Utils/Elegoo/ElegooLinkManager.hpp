@@ -1,5 +1,5 @@
-#ifndef slic3r_ElegooLink_hpp_
-#define slic3r_ElegooLink_hpp_
+#ifndef slic3r_ElegooLinkManager_hpp_
+#define slic3r_ElegooLinkManager_hpp_
 
 #include "Singleton.hpp"
 #include <atomic>
@@ -16,16 +16,16 @@ class ElegooPrinterNetwork;
 class ElegooUserNetwork;
 class ElegooPluginNetwork;
 
-class ElegooLink : public Singleton<ElegooLink>
+class ElegooLinkManager : public Singleton<ElegooLinkManager>
 {
-    friend class Singleton<ElegooLink>;
+    friend class Singleton<ElegooLinkManager>;
     friend class ElegooNetworkHelper;
     friend class ElegooPrinterNetwork;
     friend class ElegooUserNetwork;
     friend class ElegooPluginNetwork;
 
-    ElegooLink();
-    ~ElegooLink();
+    ElegooLinkManager();
+    ~ElegooLinkManager();
 
 private:
     void init(const std::string& region, std::string& iotUrl, const std::string& logLevel = "info");
@@ -73,4 +73,4 @@ private:
 
 } // namespace Slic3r
 
-#endif // slic3r_ElegooLink_hpp_
+#endif // slic3r_ElegooLinkManager_hpp_

@@ -4,7 +4,7 @@
 
 #include <string>
 #include <functional>
-#include "../nlohmann/json.hpp"
+#include <nlohmann/json.hpp>
 #include <vector>
 #include <map>
 #include "PrinterNetworkResult.hpp"
