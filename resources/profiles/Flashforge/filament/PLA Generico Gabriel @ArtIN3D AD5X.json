@@ -1,0 +1,57 @@
+{
+	"type": "filament",
+	"name": "PLA Generico Gabriel @ArtIN3D AD5X",
+	"inherits": "Generic PLA @System",
+	"from": "system",
+	"setting_id": "aim6FBzToouz2jZt",
+	"filament_id": "OFlGv1Gs",
+	"instantiation": "true",
+	"filament_vendor": [
+		"ArtIN3D"
+	],
+	"filament_settings_id": [
+		"PLA Generico Gabriel @ArtIN3D AD5X"
+	],
+	"compatible_printers": [
+		"Flashforge AD5X 0.4 nozzle"
+	],
+	"cool_plate_temp": [
+		"45"
+	],
+	"cool_plate_temp_initial_layer": [
+		"45"
+	],
+	"eng_plate_temp": [
+		"60"
+	],
+	"eng_plate_temp_initial_layer": [
+		"60"
+	],
+	"hot_plate_temp": [
+		"60"
+	],
+	"hot_plate_temp_initial_layer": [
+		"60"
+	],
+	"supertack_plate_temp": [
+		"35"
+	],
+	"supertack_plate_temp_initial_layer": [
+		"35"
+	],
+	"temperature_vitrification": [
+		"60"
+	],
+	"textured_cool_plate_temp": [
+		"45"
+	],
+	"textured_cool_plate_temp_initial_layer": [
+		"45"
+	],
+	"textured_plate_temp": [
+		"60"
+	],
+	"textured_plate_temp_initial_layer": [
+		"60"
+	]
+}

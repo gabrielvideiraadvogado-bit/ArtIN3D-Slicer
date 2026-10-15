@@ -92,5 +92,6 @@
 	"retract_restart_extra_toolchange": [
 		"0.5"
 	],
-	"default_bed_type": "4"
+	"default_bed_type": "4",
+	"support_multi_bed_types": "1"
 }
