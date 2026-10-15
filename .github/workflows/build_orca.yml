@@ -352,7 +352,8 @@ jobs:
           fi
 
       - name: Create DMG without notary
-        if: github.ref != 'refs/heads/main' && runner.os == 'macOS' && inputs.macos-combine-only
+        # ArtIN3D: forks cannot sign, so they always get the unsigned DMG.
+        if: (github.repository != 'OrcaSlicer/OrcaSlicer' || github.ref != 'refs/heads/main') && runner.os == 'macOS' && inputs.macos-combine-only
         working-directory: ${{ github.workspace }}
         run: |
           # Load the `retry` helper (retries flaky commands such as `hdiutil create`).

@@ -1,0 +1,35 @@
+name: ArtIN3D Mac
+
+# ArtIN3D: builds only the macOS universal DMG, on demand.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: artin3d-mac-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build_macos_arch:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - arm64
+          - x86_64
+    uses: ./.github/workflows/build_check_cache.yml
+    with:
+      os: macos-15
+      arch: ${{ matrix.arch }}
+      build-deps-only: false
+    secrets: inherit
+
+  build_macos_universal:
+    name: Build macOS Universal
+    needs: build_macos_arch
+    if: ${{ !cancelled() && needs.build_macos_arch.result == 'success' }}
+    uses: ./.github/workflows/build_orca.yml
+    with:
+      os: macos-15
+      arch: universal
+      macos-combine-only: true
+    secrets: inherit
