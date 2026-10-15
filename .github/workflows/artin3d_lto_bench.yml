@@ -8,6 +8,11 @@ on:
   push:
     branches:
       - teste-lto
+    # Mudanças só na medição usam artin3d_lto_rebench.yml, sem recompilar.
+    paths-ignore:
+      - .github/artin3d/**
+      - .github/workflows/artin3d_lto_bench.yml
+      - .github/workflows/artin3d_lto_rebench.yml
   workflow_dispatch:
 
 jobs:

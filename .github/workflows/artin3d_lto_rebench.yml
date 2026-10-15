@@ -1,0 +1,58 @@
+name: ArtIN3D teste LTO (só medição)
+
+# ArtIN3D: refaz a comparação de tempo com as versões já compiladas pela
+# execução indicada, sem compilar de novo.
+on:
+  push:
+    branches:
+      - teste-lto
+    paths:
+      - .github/artin3d/bench.py
+      - .github/workflows/artin3d_lto_rebench.yml
+
+env:
+  BUILD_RUN_ID: 38807107208
+
+jobs:
+  bench:
+    name: Compare slicing time
+    runs-on: macos-15
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/artin3d
+          sparse-checkout-cone-mode: false
+
+      - name: Download app bundles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: orca-*
+          path: ${{ runner.temp }}/apps
+          run-id: ${{ env.BUILD_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Extract app bundles
+        run: |
+          for v in normal lto; do
+            mkdir -p "${{ runner.temp }}/$v"
+            tar -xzf "${{ runner.temp }}/apps/orca-$v/orca-$v.tar.gz" -C "${{ runner.temp }}/$v"
+          done
+
+      - name: Benchmark
+        run: |
+          python3 .github/artin3d/bench.py \
+            "${{ runner.temp }}/normal/OrcaSlicer/OrcaSlicer.app" \
+            "${{ runner.temp }}/lto/OrcaSlicer/OrcaSlicer.app" \
+            "${{ runner.temp }}/bench"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resultado-lto-2
+          path: ${{ runner.temp }}/bench/resultado.json
+          retention-days: 30

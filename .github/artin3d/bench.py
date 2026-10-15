@@ -7,25 +7,27 @@ duas compilações para que aquecimento e cache do disco não favoreçam nenhuma
 """
 import hashlib, json, os, statistics, subprocess, sys, tempfile, time
 
-RUNS = 5
+RUNS = 9
 
 PROFILES = 'Contents/Resources/profiles/Elegoo'
 MACHINE = f'{PROFILES}/machine/ECC2/Elegoo Centauri Carbon 2 0.4 nozzle.json'
 PROCESS = f'{PROFILES}/process/ECC2/0.20mm Standard @Elegoo CC2 0.4 nozzle.json'
+FINE = f'{PROFILES}/process/ECC2/0.12mm Fine @Elegoo CC2 0.4 nozzle.json'
 FILAMENT = f'{PROFILES}/filament/ECC2/Elegoo PLA @ECC2.json'
 
 SCENARIOS = [
-    ('Benchy', 'Contents/Resources/handy_models/3DBenchy.drc', []),
-    ('Coelho 2,5x', 'Contents/Resources/handy_models/Stanford_Bunny.drc', ['--scale', '2.5']),
+    ('Benchy', 'Contents/Resources/handy_models/3DBenchy.drc', [], PROCESS),
+    ('Coelho 1,8x', 'Contents/Resources/handy_models/Stanford_Bunny.drc', ['--scale', '1.8'], PROCESS),
+    ('Coelho 1,8x fino 0,12', 'Contents/Resources/handy_models/Stanford_Bunny.drc', ['--scale', '1.8'], FINE),
 ]
 
 
-def slice_once(app, model, extra, out_dir):
+def slice_once(app, model, extra, process, out_dir):
     binary = os.path.join(app, 'Contents/MacOS/OrcaSlicer')
     os.makedirs(out_dir, exist_ok=True)
     with tempfile.TemporaryDirectory() as datadir:
         cmd = [binary, '--datadir', datadir,
-               '--load-settings', f'{os.path.join(app, MACHINE)};{os.path.join(app, PROCESS)}',
+               '--load-settings', f'{os.path.join(app, MACHINE)};{os.path.join(app, process)}',
                '--load-filaments', os.path.join(app, FILAMENT),
                '--arrange', '1', *extra,
                '--slice', '0', '--outputdir', out_dir, os.path.join(app, model)]
@@ -57,18 +59,18 @@ def main():
     apps = {'normal': sys.argv[1], 'lto': sys.argv[2]}
     out_root = sys.argv[3]
     results = {}
-    for name, model, extra in SCENARIOS:
+    for name, model, extra, process in SCENARIOS:
         times = {k: [] for k in apps}
         hashes = {}
         for variant, app in apps.items():  # aquecimento, não entra na média
             out = os.path.join(out_root, f'{name}-{variant}-warmup')
-            slice_once(app, model, extra, out)
+            slice_once(app, model, extra, process, out)
             hashes[variant] = gcode_hash(out)
         for i in range(RUNS):
             order = list(apps) if i % 2 == 0 else list(reversed(apps))
             for variant in order:
                 out = os.path.join(out_root, f'{name}-{variant}-{i}')
-                times[variant].append(slice_once(apps[variant], model, extra, out))
+                times[variant].append(slice_once(apps[variant], model, extra, process, out))
         med = {k: statistics.median(v) for k, v in times.items()}
         results[name] = {'tempos': times, 'mediana': med,
                          'ganho_pct': 100 * (med['normal'] - med['lto']) / med['normal'],
