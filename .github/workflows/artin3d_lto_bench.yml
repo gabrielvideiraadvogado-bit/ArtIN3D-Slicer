@@ -1,0 +1,138 @@
+name: ArtIN3D teste LTO
+
+# ArtIN3D: compila o slicer para Apple Silicon com e sem ThinLTO e compara o
+# tempo de fatiamento das duas versões na mesma máquina.
+# Disparo manual só funciona para receitas que estão no main; por isso este
+# teste roda ao enviar o ramo teste-lto.
+on:
+  push:
+    branches:
+      - teste-lto
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.variant }}
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [normal, lto]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          lfs: 'false'
+
+      # Mesmo cache de dependências que a receita principal gravou no main.
+      - name: load cached deps
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/deps/build/arm64
+          key: macos-15-arm64-cache-orcaslicer_deps-build-${{ hashFiles('deps/**') }}
+          fail-on-cache-miss: true
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~4.3.0"
+          useLocalCache: true
+          useCloudCache: true
+
+      - name: Compiler cache
+        id: ccache
+        continue-on-error: true
+        uses: hendrikmuhs/ccache-action@v1.2.24
+        with:
+          key: macOS-arm64
+          max-size: 3G
+          restore: false
+          save: false
+          job-summary: ''
+
+      - name: Restore compiler cache
+        if: ${{ steps.ccache.outcome == 'success' }}
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ github.workspace }}/.ccache
+          key: ccache-macOS-arm64-${{ github.run_id }}
+          restore-keys: ccache-macOS-arm64-
+
+      - name: Enable compiler cache
+        if: ${{ steps.ccache.outcome == 'success' }}
+        run: |
+          echo "CMAKE_C_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache" >> "$GITHUB_ENV"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime" >> "$GITHUB_ENV"
+          echo "CCACHE_DEPEND=1" >> "$GITHUB_ENV"
+          ccache -z
+
+      - name: Install tools mac
+        run: |
+          brew install libtool
+          mkdir -p ${{ github.workspace }}/deps/build/arm64
+
+      # CMake lê CFLAGS/CXXFLAGS/LDFLAGS do ambiente na primeira configuração.
+      - name: Enable ThinLTO
+        if: matrix.variant == 'lto'
+        run: |
+          echo "CFLAGS=-flto=thin" >> "$GITHUB_ENV"
+          echo "CXXFLAGS=-flto=thin" >> "$GITHUB_ENV"
+          echo "LDFLAGS=-flto=thin -Wl,-cache_path_lto,${{ runner.temp }}/lto-cache" >> "$GITHUB_ENV"
+
+      - name: Build slicer mac
+        run: ./build_release_macos.sh -s -n -x -j 3 -a arm64 -t 10.15
+
+      - name: Confirm build flags
+        run: |
+          grep -E "^CMAKE_(C|CXX)_FLAGS:|^CMAKE_EXE_LINKER_FLAGS:" build/arm64/CMakeCache.txt
+          ls -la build/arm64/OrcaSlicer/OrcaSlicer.app/Contents/MacOS/
+          ccache -s || true
+
+      - name: Pack app bundle
+        run: tar -czf orca-${{ matrix.variant }}.tar.gz -C build/arm64 OrcaSlicer
+
+      - name: Upload app bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: orca-${{ matrix.variant }}
+          path: orca-${{ matrix.variant }}.tar.gz
+          retention-days: 5
+
+  bench:
+    name: Compare slicing time
+    needs: build
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github/artin3d
+          sparse-checkout-cone-mode: false
+
+      - name: Download app bundles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: orca-*
+          path: ${{ runner.temp }}/apps
+
+      - name: Extract app bundles
+        run: |
+          for v in normal lto; do
+            mkdir -p "${{ runner.temp }}/$v"
+            tar -xzf "${{ runner.temp }}/apps/orca-$v/orca-$v.tar.gz" -C "${{ runner.temp }}/$v"
+          done
+
+      - name: Benchmark
+        run: |
+          python3 .github/artin3d/bench.py \
+            "${{ runner.temp }}/normal/OrcaSlicer/OrcaSlicer.app" \
+            "${{ runner.temp }}/lto/OrcaSlicer/OrcaSlicer.app" \
+            "${{ runner.temp }}/bench"
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: resultado-lto
+          path: ${{ runner.temp }}/bench/resultado.json
+          retention-days: 30
