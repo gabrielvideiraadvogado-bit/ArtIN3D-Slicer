@@ -465,6 +465,10 @@ include(OCCT/OCCT.cmake)
 include(OpenCV/OpenCV.cmake)
 include(python3/python3.cmake)
 include(wxInspector/wxInspector.cmake)
+# ArtIN3D: conexão com impressoras Elegoo
+include(ixwebsocket/ixwebsocket.cmake)
+include(PahoMqttCpp/PahoMqttCpp.cmake)
+include(elegoolink/elegoolink.cmake)
 
 set(_dep_list
     dep_Boost
@@ -492,6 +496,9 @@ set(_dep_list
     dep_FFMPEG
     dep_Assimp
     ${DATACHANNEL_PKG}
+    dep_ixwebsocket
+    dep_PahoMqttCpp
+    dep_elegoolink
     )
 
 if (MSVC)
