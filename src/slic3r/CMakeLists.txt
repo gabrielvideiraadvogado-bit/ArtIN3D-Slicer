@@ -1017,6 +1017,11 @@ endif()
 
 # ArtIN3D: biblioteca de conexão da Elegoo
 find_package(elegoolink REQUIRED)
+if (APPLE)
+    # elegoolink's exported target points the linker at the Agora frameworks inside its
+    # source tree, which the deps cache does not keep; they are also installed in bin/.
+    target_link_options(libslic3r_gui PUBLIC "-F${CMAKE_PREFIX_PATH}/bin")
+endif ()
 target_link_libraries(libslic3r_gui libslic3r cereal::cereal imgui imguizmo minilzo libvgcode md4c-html glad ${_opengl_link_lib} hidapi mdns ${wxWidgets_LIBRARIES} glfw libcurl OpenSSL::SSL OpenSSL::Crypto LibDataChannel::LibDataChannel noise::noise pybind11::embed elegoolink::elegoolink)
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
