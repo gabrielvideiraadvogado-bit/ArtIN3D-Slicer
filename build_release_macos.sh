@@ -340,6 +340,11 @@ function lipo_dir() {
             echo "  already universal: $rel"
             continue
         fi
+        # ArtIN3D: the Flashforge helper is x86_64 in both builds (it runs under Rosetta).
+        if ! lipo -info "$f" 2>/dev/null | grep -q "arm64"; then
+            echo "  x86_64 only, kept as is: $rel"
+            continue
+        fi
         if [ -f "$x86" ]; then
             echo "  lipo: $rel"
             lipo -create "$f" "$x86" -output "$f.tmp"

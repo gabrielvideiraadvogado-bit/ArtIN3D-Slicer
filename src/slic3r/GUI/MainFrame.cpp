@@ -150,6 +150,7 @@
 #include "slic3r/Utils/NetworkAgent.hpp"
 // ArtIN3D: impressoras pela conta da marca ou pela rede local
 #include "Elegoo/PrinterManagerView.hpp"
+#include "PrintersHubPanel.hpp"
 #include "slic3r/Utils/Elegoo/IPCClient.hpp"
 #include "slic3r/Utils/Elegoo/IPCServer.hpp"
 #include "slic3r/Utils/Elegoo/MultiInstanceCoordinator.hpp"
@@ -626,8 +627,8 @@ DPIFrame(NULL, wxID_ANY, "", wxDefaultPosition, wxDefaultSize, BORDERLESS_FRAME_
     // impressoras; as outras pedem a ela pela IPC, como no ElegooSlicer.
     Bind(EVT_USER_INFO_UPDATED, [this](wxCommandEvent&) {
         wxGetApp().CallAfter([this]() {
-            if (PrinterManagerView* view = m_printers_page ? m_printers_page->get() : nullptr)
-                view->refreshUserInfo();
+            if (PrintersHubPanel* hub = m_printers_page ? m_printers_page->get() : nullptr)
+                hub->elegoo()->refreshUserInfo();
         });
     });
     MultiInstanceCoordinator::getInstance()->init();
@@ -1604,14 +1605,7 @@ void MainFrame::init_tabpanel() {
     m_tabpanel->AddPage(TAB_ID_CALIBRATION, m_calibration_page, _L("Calibration"), "tab_calibration_active");
 
     // ArtIN3D: impressoras de todas as marcas, sempre visível, independente da impressora selecionada.
-    m_printers_page = new LazyPage<PrinterManagerView>(m_tabpanel, TAB_ID_PRINTERS, 70, [](wxWindow* parent) {
-        auto* view = new PrinterManagerView(parent);
-        view->CallAfter([view]() {
-            if (!wxGetApp().is_closing() && !view->IsBeingDeleted())
-                view->initializeWebView();
-        });
-        return view;
-    });
+    m_printers_page = new LazyPage<PrintersHubPanel>(m_tabpanel, TAB_ID_PRINTERS, 70);
     m_lazy_pages.push_back(m_printers_page);
     m_tabpanel->AddPage(TAB_ID_PRINTERS, m_printers_page, _L("Printers"), "tab_monitor_active");
 

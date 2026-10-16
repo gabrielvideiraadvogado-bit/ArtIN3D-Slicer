@@ -854,6 +854,13 @@ set(SLIC3R_GUI_SOURCES
     GUI/Elegoo/PrinterManagerView.hpp
     GUI/Elegoo/ElegooPrinterWebView.cpp
     GUI/Elegoo/ElegooPrinterWebView.hpp
+    # ArtIN3D: aba Impressoras e conta Flashforge
+    GUI/PrintersHubPanel.cpp
+    GUI/PrintersHubPanel.hpp
+    GUI/Flashforge/FlashforgePanel.cpp
+    GUI/Flashforge/FlashforgePanel.hpp
+    Utils/Flashforge/FlashforgeCloud.cpp
+    Utils/Flashforge/FlashforgeCloud.hpp
     Utils/Process.cpp
     Utils/Process.hpp
     Utils/RaycastManager.cpp

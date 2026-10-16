@@ -89,7 +89,7 @@ class DesignPanel;
 class MainFrame;
 class WebViewPanel;
 class ParamsDialog;
-class PrinterManagerView;
+class PrintersHubPanel;
 enum class Shortcut : uint8_t;
 struct KeyChord;
 #ifdef __WXGTK__
@@ -524,7 +524,7 @@ public:
 
     LazyPage<CalibrationPanel>* m_calibration_page{ nullptr };
     // ArtIN3D: impressoras pela conta da marca ou pela rede local
-    LazyPage<PrinterManagerView>* m_printers_page{ nullptr };
+    LazyPage<PrintersHubPanel>* m_printers_page{ nullptr };
     LazyPage<WebViewPanel>* m_home_page { nullptr };
     LazyPage<PrinterWebView>* m_printer_view_page{nullptr};
     PluginPages           m_plugin_pages;
