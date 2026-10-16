@@ -249,6 +249,7 @@ typedef struct fnet_conn_write_data {
     fnet_conn_write_data_type_t type;
     const void *data;
     const char *topic;
+    const char *devId;              // ArtIN3D: added in library 3.4.3 (Flash Studio 1.7.17)
     int qos;
 } fnet_conn_write_data_t;
 
@@ -256,8 +257,10 @@ typedef struct fnet_conn_write_multi_data {
     fnet_conn_write_data_type_t type;
     const void **datas;
     const char **topics;
+    const char **devIds;            // ArtIN3D: added in library 3.4.3 (Flash Studio 1.7.17)
     int dataCnt;                    // the value must be 1 or the same as topicCnt
     int topicCnt;                   // the value must be 1 or the same as dataCnt
+    int devIdCnt;                   // ArtIN3D: added in library 3.4.3
     int qos;
 } fnet_conn_write_multi_data_t;
 
@@ -1055,6 +1058,14 @@ FNET_API int fnet_connectionSend(void *conn, const fnet_conn_write_data_t *write
 
 FNET_API int fnet_connectionSendMulti(void *conn, const fnet_conn_write_multi_data_t *writeData,
     fnet_conn_write_multi_result_t **writeResult);
+
+// ArtIN3D: library 3.4.3 (Flash Studio 1.7.17) sends printer commands through Flashforge's
+// HTTP bus instead of publishing them on MQTT; signatures read from Flash Studio's calls.
+FNET_API int fnet_connectionSendByHttp(void *conn, const char *clientId, const char *accessToken,
+    const fnet_conn_write_data_t *writeData, int msTimeout);
+
+FNET_API int fnet_connectionSendMultiByHttp(void *conn, const char *clientId, const char *accessToken,
+    const fnet_conn_write_multi_data_t *writeData, int msTimeout, fnet_conn_write_multi_result_t **writeResult);
 
 FNET_API int fnet_connectionSubscribe(void *conn, const fnet_conn_subscribe_data_t *subscribeData);
 

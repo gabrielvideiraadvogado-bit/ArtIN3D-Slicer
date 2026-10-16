@@ -46,7 +46,7 @@ public:
 
     // Real-time connection: printers push their detail as "detail" events.
     void set_event_handler(EventHandler handler);
-    bool connect_realtime(const std::vector<std::string>& dev_topics, std::string& error);
+    bool connect_realtime(const std::vector<std::string>& dev_topics, const std::vector<std::string>& dev_ids, std::string& error);
     bool request_detail(std::string& error);
     // action: "light" {on}, "camera" {open}, "loadFilament"/"unloadFilament" {slot}
     bool command(const std::string& dev_topic, const std::string& action, const nlohmann::json& args, std::string& error);

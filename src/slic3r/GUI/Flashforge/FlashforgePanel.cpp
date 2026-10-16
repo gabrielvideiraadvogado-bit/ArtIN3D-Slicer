@@ -225,21 +225,24 @@ void FlashforgePanel::refresh_printers()
 
 void FlashforgePanel::connect_realtime(const nlohmann::json& printers)
 {
-    std::vector<std::string> topics;
+    std::vector<std::string> topics, dev_ids;
     m_dev_topics.clear();
     for (const nlohmann::json& printer : printers) {
-        const std::string topic = printer.value("devTopic", std::string());
-        m_dev_topics[printer.value("devId", std::string())] = topic;
-        if (!topic.empty())
+        const std::string topic  = printer.value("devTopic", std::string());
+        const std::string dev_id = printer.value("devId", std::string());
+        m_dev_topics[dev_id]     = topic;
+        if (!topic.empty()) {
             topics.push_back(topic);
+            dev_ids.push_back(dev_id);
+        }
     }
     if (m_realtime || topics.empty())
         return;
     m_realtime = true;
     std::weak_ptr<bool> alive = m_alive;
-    std::thread([this, alive, topics]() {
+    std::thread([this, alive, topics, dev_ids]() {
         std::string error;
-        const bool  ok = FlashforgeCloud::instance().connect_realtime(topics, error);
+        const bool  ok = FlashforgeCloud::instance().connect_realtime(topics, dev_ids, error);
         wxGetApp().CallAfter([this, alive, ok, error]() {
             if (alive.expired() || !*alive.lock())
                 return;

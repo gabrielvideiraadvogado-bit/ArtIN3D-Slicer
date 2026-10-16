@@ -379,12 +379,12 @@ nlohmann::json FlashforgeCloud::printers_with_detail(std::string& error)
     return result;
 }
 
-bool FlashforgeCloud::connect_realtime(const std::vector<std::string>& dev_topics, std::string& error)
+bool FlashforgeCloud::connect_realtime(const std::vector<std::string>& dev_topics, const std::vector<std::string>& dev_ids, std::string& error)
 {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     if (!ensure_session(error))
         return false;
-    call("connect", {{"clientId", m_client_id}, {"accessToken", m_access_token}, {"devTopics", dev_topics}}, error);
+    call("connect", {{"clientId", m_client_id}, {"accessToken", m_access_token}, {"devTopics", dev_topics}, {"devIds", dev_ids}}, error);
     m_realtime = error.empty();
     return m_realtime;
 }

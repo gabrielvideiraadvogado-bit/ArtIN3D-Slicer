@@ -77,6 +77,7 @@ struct Lib
     FNET_FUNC(connectionStop)
     FNET_FUNC(connectionSend)
     FNET_FUNC(connectionSendMulti)
+    FNET_FUNC(connectionSendByHttp)
     FNET_FUNC(freeWriteMultiResult)
     FNET_FUNC(connectionSubscribe)
     FNET_FUNC(allocString)
@@ -116,6 +117,7 @@ struct Realtime
     std::string              user_topic;
     std::vector<std::string> common_topics;
     std::vector<std::string> dev_topics;
+    std::vector<std::string> dev_ids;       // parallel to dev_topics
 };
 
 Realtime g_rt;
@@ -230,7 +232,7 @@ json hello(const json& params)
         LOAD(getWanDevList) LOAD(freeWanDevList) LOAD(getWanDevProductDetail) LOAD(freeDevProduct) LOAD(freeDevDetail)
         LOAD(getLanDevList) LOAD(freeLanDevInfos) LOAD(getLanDevDetail) LOAD(ctrlLanDevLight)
         LOAD(getMqttConfig) LOAD(freeMqttConfig) LOAD(createConnection) LOAD(freeConnection) LOAD(connectionStop)
-        LOAD(connectionSend) LOAD(connectionSendMulti) LOAD(freeWriteMultiResult) LOAD(connectionSubscribe)
+        LOAD(connectionSend) LOAD(connectionSendMulti) LOAD(connectionSendByHttp) LOAD(freeWriteMultiResult) LOAD(connectionSubscribe)
         LOAD(allocString) LOAD(freeSyncLoginInfo) LOAD(freeSyncBindInfo) LOAD(freeSyncOnlineInfo)
         LOAD(freeUploadLogInfo) LOAD(freeSliceState) LOAD(freeJobInfo)
         LOAD(wanDevSendGcodeClound) LOAD(freeCloundGcodeData) LOAD(wanDevAddCloundJob) LOAD(freeAddCloudJobResults)
@@ -421,16 +423,31 @@ bool load_mqtt_config_locked()
     return true;
 }
 
-// Caller holds g_rt.mutex. Asks the printers to publish their full detail now.
-void request_detail_locked(const std::vector<std::string>& topics)
+// Caller holds g_rt.mutex. Library 3.4.3 takes printer commands through Flashforge's HTTP
+// bus, addressed by topic and device id, like Flash Studio 1.7.17 does (its MQTT publish
+// path rejects them).
+int send_locked(fnet_conn_write_data_type_t type, const void* data, const std::string& topic, const std::string& dev_id,
+                int timeout_ms = 7000)
 {
     if (g_rt.conn == nullptr)
-        return;
-    // One request per printer: library 3.4.3 rejects the multi-topic form with a null payload.
-    for (const std::string& topic : topics) {
-        fnet_conn_write_data_t write{FNET_CONN_WRITE_UPDATE_DETAIL, nullptr, topic.c_str(), 1};
-        g_lib.connectionSend(g_rt.conn, &write);
-    }
+        return FNET_ERROR;
+    fnet_conn_write_data_t write{type, data, topic.c_str(), dev_id.c_str(), 1};
+    return g_lib.connectionSendByHttp(g_rt.conn, g_rt.client_id.c_str(), g_rt.access_token.c_str(), &write, timeout_ms);
+}
+
+std::string dev_id_for_topic_locked(const std::string& topic)
+{
+    for (size_t i = 0; i < g_rt.dev_topics.size() && i < g_rt.dev_ids.size(); ++i)
+        if (g_rt.dev_topics[i] == topic)
+            return g_rt.dev_ids[i];
+    return std::string();
+}
+
+// Caller holds g_rt.mutex. Asks the printers to publish their full detail now.
+void request_detail_locked()
+{
+    for (size_t i = 0; i < g_rt.dev_topics.size() && i < g_rt.dev_ids.size(); ++i)
+        send_locked(FNET_CONN_WRITE_UPDATE_DETAIL, nullptr, g_rt.dev_topics[i], g_rt.dev_ids[i]);
 }
 
 void on_connected()
@@ -444,7 +461,11 @@ void on_connected()
     std::vector<const char*>   ptrs = c_strings(topics);
     fnet_conn_subscribe_data_t sub{ptrs.data(), static_cast<int>(ptrs.size())};
     g_lib.connectionSubscribe(g_rt.conn, &sub);
-    request_detail_locked(g_rt.dev_topics);
+    // The detail request is an HTTP round trip: keep it off the library's callback thread.
+    std::thread([]() {
+        std::lock_guard<std::mutex> lock(g_rt.mutex);
+        request_detail_locked();
+    }).detach();
 }
 
 void status_callback(fnet_conn_status_t status, void*)
@@ -526,6 +547,7 @@ json connect(const json& params)
     g_rt.client_id    = param_str(params, "clientId");
     g_rt.access_token = param_str(params, "accessToken");
     g_rt.dev_topics   = params.value("devTopics", std::vector<std::string>());
+    g_rt.dev_ids      = params.value("devIds", std::vector<std::string>());
     if (!load_mqtt_config_locked())
         throw BridgeError{FNET_ERROR, "cannot get the real-time connection settings"};
     fnet_conn_settings_t settings{};
@@ -547,7 +569,7 @@ json set_token(const json& params)
 json update_detail(const json&)
 {
     std::lock_guard<std::mutex> lock(g_rt.mutex);
-    request_detail_locked(g_rt.dev_topics);
+    request_detail_locked();
     return json::object();
 }
 
@@ -559,9 +581,13 @@ json command(const json& params)
     std::lock_guard<std::mutex> lock(g_rt.mutex);
     if (g_rt.conn == nullptr)
         throw BridgeError{FNET_ERROR, "not connected"};
-    fnet_conn_write_data_t write{};
-    write.topic = topic.c_str();
-    write.qos   = 1;
+    std::string dev_id = params.value("devId", std::string());
+    if (dev_id.empty())
+        dev_id = dev_id_for_topic_locked(topic);
+    struct {
+        fnet_conn_write_data_type_t type;
+        const void*                 data;
+    } write{};
     fnet_light_ctrl_t         light{};
     fnet_camera_stream_ctrl_t camera{};
     fnet_matl_station_ctrl_t  station{};
@@ -581,7 +607,7 @@ json command(const json& params)
     } else {
         throw BridgeError{FNET_ERROR, "unknown command: " + action};
     }
-    check(g_lib.connectionSend(g_rt.conn, &write), action);
+    check(send_locked(write.type, write.data, topic, dev_id), action);
     return json::object();
 }
 
@@ -749,10 +775,7 @@ json send_file(const json& params)
     int start_ret         = FNET_ERROR;
     {
         std::lock_guard<std::mutex> lock(g_rt.mutex);
-        if (g_rt.conn != nullptr) {
-            fnet_conn_write_data_t write{FNET_CONN_WRITE_START_CLOUND_JOB, &job, topic.c_str(), 1};
-            start_ret = g_lib.connectionSend(g_rt.conn, &write);
-        }
+        start_ret = send_locked(FNET_CONN_WRITE_START_CLOUND_JOB, &job, topic, dev_id, 15000);
     }
     g_lib.freeCloundGcodeData(stored);
     check(start_ret, "notify the printer");
