@@ -12,14 +12,16 @@
 #include <wx/sizer.h>
 
 #include <thread>
+#include <vector>
 
 namespace Slic3r { namespace GUI {
 
 namespace {
 
 const char* LOGIN_URL = "https://desktop.voxelshare.com";
-// The printers' state is polled while the panel is visible.
-const int REFRESH_INTERVAL_MS = 10000;
+// While the panel is visible: without the real-time connection the printers are polled;
+// with it they push their state, and the timer only asks for a fresh full detail.
+const int REFRESH_INTERVAL_MS = 15000;
 
 } // namespace
 
@@ -40,12 +42,30 @@ FlashforgePanel::FlashforgePanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     WebView::LoadUrl(m_browser, file_url_from_path(page));
 
     m_refresh_timer.SetOwner(this);
-    Bind(wxEVT_TIMER, [this](wxTimerEvent&) { refresh_printers(); }, m_refresh_timer.GetId());
+    Bind(wxEVT_TIMER, [this](wxTimerEvent&) {
+        if (!m_realtime) {
+            refresh_printers();
+            return;
+        }
+        std::thread([]() {
+            std::string ignored;
+            FlashforgeCloud::instance().request_detail(ignored);
+        }).detach();
+    }, m_refresh_timer.GetId());
+
+    std::weak_ptr<bool> alive = m_alive;
+    FlashforgeCloud::instance().set_event_handler([this, alive](const nlohmann::json& event) {
+        wxGetApp().CallAfter([this, alive, event]() {
+            if (!alive.expired() && *alive.lock())
+                on_cloud_event(event);
+        });
+    });
 }
 
 FlashforgePanel::~FlashforgePanel()
 {
     *m_alive = false;
+    FlashforgeCloud::instance().set_event_handler(nullptr);
     m_refresh_timer.Stop();
 }
 
@@ -93,6 +113,73 @@ void FlashforgePanel::refresh_printers()
             m_refreshing = false;
             send_account_state();
             send_to_page("printers", {{"printers", printers}, {"error", error}});
+            if (error.empty())
+                connect_realtime(printers);
+        });
+    }).detach();
+}
+
+void FlashforgePanel::connect_realtime(const nlohmann::json& printers)
+{
+    std::vector<std::string> topics;
+    m_dev_topics.clear();
+    for (const nlohmann::json& printer : printers) {
+        const std::string topic = printer.value("devTopic", std::string());
+        m_dev_topics[printer.value("devId", std::string())] = topic;
+        if (!topic.empty())
+            topics.push_back(topic);
+    }
+    if (m_realtime || topics.empty())
+        return;
+    m_realtime = true;
+    std::weak_ptr<bool> alive = m_alive;
+    std::thread([this, alive, topics]() {
+        std::string error;
+        const bool  ok = FlashforgeCloud::instance().connect_realtime(topics, error);
+        wxGetApp().CallAfter([this, alive, ok, error]() {
+            if (alive.expired() || !*alive.lock())
+                return;
+            m_realtime = ok;
+            if (ok)
+                return; // the helper reports the connected state itself
+            BOOST_LOG_TRIVIAL(warning) << "Flashforge real-time connection failed: " << error;
+            send_to_page("connection", {{"connected", false}, {"error", error}});
+        });
+    }).detach();
+}
+
+void FlashforgePanel::on_cloud_event(const nlohmann::json& event)
+{
+    const std::string type = event.value("event", std::string());
+    if (type == "detail")
+        send_to_page("detail", event.value("data", nlohmann::json::object()));
+    else if (type == "connection")
+        send_to_page("connection", {{"connected", event.value("connected", false)}});
+    else if (type == "offline" || type == "online")
+        send_to_page(type, {{"devId", event.value("devId", std::string())}});
+    else if (type == "devicesChanged")
+        refresh_printers();
+}
+
+void FlashforgePanel::run_command(const std::string& dev_id, const std::string& action, const nlohmann::json& args)
+{
+    const auto it = m_dev_topics.find(dev_id);
+    if (it == m_dev_topics.end() || it->second.empty()) {
+        send_to_page("commandResult", {{"devId", dev_id}, {"action", action}, {"error", "printer not found"}});
+        return;
+    }
+    const std::string   topic = it->second;
+    std::weak_ptr<bool> alive = m_alive;
+    std::thread([this, alive, topic, dev_id, action, args]() {
+        std::string error;
+        FlashforgeCloud::instance().command(topic, action, args, error);
+        // Ask for the new state right away instead of waiting for the next push.
+        std::string ignored;
+        if (error.empty())
+            FlashforgeCloud::instance().request_detail(ignored);
+        wxGetApp().CallAfter([this, alive, dev_id, action, error]() {
+            if (!alive.expired() && *alive.lock())
+                send_to_page("commandResult", {{"devId", dev_id}, {"action", action}, {"error", error}});
         });
     }).detach();
 }
@@ -154,9 +241,21 @@ void FlashforgePanel::on_script_message(wxWebViewEvent& event)
         open_login();
     } else if (command == "logout") {
         m_refresh_timer.Stop();
-        FlashforgeCloud::instance().logout();
-        send_account_state();
-        send_to_page("printers", {{"printers", nlohmann::json::array()}, {"error", ""}});
+        m_realtime = false;
+        m_dev_topics.clear();
+        std::weak_ptr<bool> alive = m_alive;
+        std::thread([this, alive]() {
+            FlashforgeCloud::instance().logout();
+            wxGetApp().CallAfter([this, alive]() {
+                if (alive.expired() || !*alive.lock())
+                    return;
+                send_account_state();
+                send_to_page("printers", {{"printers", nlohmann::json::array()}, {"error", ""}});
+            });
+        }).detach();
+    } else if (command == "light" || command == "camera" || command == "loadFilament" || command == "unloadFilament") {
+        const nlohmann::json data = message.value("data", nlohmann::json::object());
+        run_command(data.value("devId", std::string()), command, data);
     } else if (command == "refresh") {
         refresh_printers();
     } else if (command == "openFlashStudio") {

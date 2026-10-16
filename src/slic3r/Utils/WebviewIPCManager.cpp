@@ -527,7 +527,7 @@ void WebviewIPCManager::offEvent(const std::string& method, const IPCEventHandle
         auto& handlers = it->second;
         // Note: This requires function object comparison, may need other identification methods in actual use
         handlers.erase(std::remove_if(handlers.begin(), handlers.end(),
-            [&handler](const IPCEventHandler& h) {
+            [](const IPCEventHandler&) {
                 // Comparison implementation needed based on actual situation
                 return false; // Simplified implementation
             }), handlers.end());

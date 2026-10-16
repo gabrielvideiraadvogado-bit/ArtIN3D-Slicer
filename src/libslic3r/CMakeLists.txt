@@ -613,6 +613,11 @@ add_library(libslic3r STATIC ${lisbslic3r_sources}
     "${CMAKE_CURRENT_BINARY_DIR}/libslic3r_version.h"
     ${OpenVDBUtils_SOURCES})
 source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${lisbslic3r_sources})
+# ArtIN3D: ported from ElegooSlicer, not written for -Werror (see src/slic3r/CMakeLists.txt).
+if (NOT MSVC)
+    set_source_files_properties(PrinterNetworkInfo.cpp PrinterNetworkResult.cpp StandardColorMatcher.cpp
+        PROPERTIES COMPILE_OPTIONS "-Wno-error")
+endif ()
 
 if (SLIC3R_STATIC)
     set(CGAL_Boost_USE_STATIC_LIBS ON CACHE BOOL "" FORCE)

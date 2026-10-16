@@ -11,6 +11,9 @@
 #include <wx/webview.h>
 
 #include <atomic>
+#include <map>
+#include <memory>
+#include <string>
 
 namespace Slic3r { namespace GUI {
 
@@ -28,11 +31,17 @@ private:
     void send_account_state();
     void refresh_printers();
     void open_login();
+    void connect_realtime(const nlohmann::json& printers);
+    void on_cloud_event(const nlohmann::json& event);
+    void run_command(const std::string& dev_id, const std::string& action, const nlohmann::json& args);
 
     wxWebView*        m_browser{nullptr};
     wxTimer           m_refresh_timer;
     std::atomic<bool> m_refreshing{false};
     std::atomic<bool> m_page_ready{false};
+    bool              m_realtime{false};
+    // devId -> MQTT topic of each printer of the account, from the last list.
+    std::map<std::string, std::string> m_dev_topics;
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
 };
 

@@ -8,6 +8,10 @@
 //
 //   request:  {"id": 1, "method": "wanDevList", "params": {...}}
 //   reply:    {"id": 1, "ok": true, "result": ...}  or  {"id": 1, "ok": false, "code": n, "error": "..."}
+//   event:    {"event": "detail", "data": {...}}   (real-time connection, any time)
+//
+// The real-time connection never announces this client as a new PC login (Flash Studio's
+// "sync login"), so a Flash Studio running on the same account stays signed in.
 //
 // The function declarations come from FlashNetwork.h of FlashForge/Orca-Flashforge 1.7.15
 // (AGPL-3.0), which matches library version 3.4.x. Passwords are passed through to the
@@ -19,8 +23,11 @@
 
 #include <dlfcn.h>
 #include <iostream>
+#include <mutex>
 #include <random>
 #include <string>
+#include <thread>
+#include <vector>
 
 using json = nlohmann::json;
 
@@ -61,12 +68,51 @@ struct Lib
     FNET_FUNC(freeLanDevInfos)
     FNET_FUNC(getLanDevDetail)
     FNET_FUNC(ctrlLanDevLight)
+    FNET_FUNC(getMqttConfig)
+    FNET_FUNC(freeMqttConfig)
+    FNET_FUNC(createConnection)
+    FNET_FUNC(freeConnection)
+    FNET_FUNC(connectionStop)
+    FNET_FUNC(connectionSend)
+    FNET_FUNC(connectionSendMulti)
+    FNET_FUNC(freeWriteMultiResult)
+    FNET_FUNC(connectionSubscribe)
+    FNET_FUNC(allocString)
+    FNET_FUNC(freeSyncLoginInfo)
+    FNET_FUNC(freeSyncBindInfo)
+    FNET_FUNC(freeSyncOnlineInfo)
+    FNET_FUNC(freeUploadLogInfo)
+    FNET_FUNC(freeSliceState)
+    FNET_FUNC(freeJobInfo)
 #undef FNET_FUNC
     std::string version;
     bool        initialized = false;
 };
 
 Lib g_lib;
+
+// Replies come from the request loop, events from the library's connection threads.
+std::mutex g_out_mutex;
+
+void emit(const json& message)
+{
+    std::lock_guard<std::mutex> lock(g_out_mutex);
+    std::cout << message.dump() << std::endl;
+}
+
+// Real-time (MQTT) connection to the Flashforge cloud.
+struct Realtime
+{
+    std::mutex               mutex;
+    void*                    conn = nullptr;
+    std::string              client_id;
+    std::string              access_token;
+    std::string              user_topic;
+    std::vector<std::string> common_topics;
+    std::vector<std::string> dev_topics;
+};
+
+Realtime g_rt;
 
 std::string str(const char* s) { return s ? std::string(s) : std::string(); }
 
@@ -177,6 +223,10 @@ json hello(const json& params)
         LOAD(signOut) LOAD(getUserProfile) LOAD(freeUserProfile) LOAD(bindAccountRelp) LOAD(freeBindAccountRelpResult)
         LOAD(getWanDevList) LOAD(freeWanDevList) LOAD(getWanDevProductDetail) LOAD(freeDevProduct) LOAD(freeDevDetail)
         LOAD(getLanDevList) LOAD(freeLanDevInfos) LOAD(getLanDevDetail) LOAD(ctrlLanDevLight)
+        LOAD(getMqttConfig) LOAD(freeMqttConfig) LOAD(createConnection) LOAD(freeConnection) LOAD(connectionStop)
+        LOAD(connectionSend) LOAD(connectionSendMulti) LOAD(freeWriteMultiResult) LOAD(connectionSubscribe)
+        LOAD(allocString) LOAD(freeSyncLoginInfo) LOAD(freeSyncBindInfo) LOAD(freeSyncOnlineInfo)
+        LOAD(freeUploadLogInfo) LOAD(freeSliceState) LOAD(freeJobInfo)
 #undef LOAD
         g_lib.version = str(g_lib.getVersion());
         if (g_lib.version.rfind(SUPPORTED_VERSION_PREFIX, 0) != 0)
@@ -282,7 +332,8 @@ json wan_dev_list(const json& params)
         const fnet_wan_dev_info_t& d = infos[i];
         list.push_back({{"devId", str(d.devId)}, {"name", str(d.name)}, {"model", str(d.model)},
                         {"imageUrl", str(d.imageUrl)}, {"status", str(d.status)},
-                        {"serialNumber", str(d.serialNumber)}, {"location", str(d.location)}});
+                        {"serialNumber", str(d.serialNumber)}, {"location", str(d.location)},
+                        {"devTopic", str(d.devTopic)}});
     }
     g_lib.freeWanDevList(infos, count);
     return list;
@@ -339,6 +390,194 @@ json lan_light(const json& params)
     return json::object();
 }
 
+// ---- real-time connection ------------------------------------------------------------
+
+std::vector<const char*> c_strings(const std::vector<std::string>& values)
+{
+    std::vector<const char*> out;
+    for (const std::string& v : values)
+        out.push_back(v.c_str());
+    return out;
+}
+
+// Caller holds g_rt.mutex.
+bool load_mqtt_config_locked()
+{
+    fnet_mqtt_config_t* config = nullptr;
+    if (g_lib.getMqttConfig(g_rt.client_id.c_str(), g_rt.access_token.c_str(), &config, TIMEOUT_MS) != FNET_OK)
+        return false;
+    g_rt.user_topic = str(config->userTopic);
+    g_rt.common_topics.clear();
+    for (int i = 0; i < config->commonTopicCnt; ++i)
+        g_rt.common_topics.push_back(str(config->commonTopics[i]));
+    g_lib.freeMqttConfig(config);
+    return true;
+}
+
+// Caller holds g_rt.mutex. Asks the printers to publish their full detail now.
+void request_detail_locked(const std::vector<std::string>& topics)
+{
+    if (g_rt.conn == nullptr)
+        return;
+    // One request per printer: library 3.4.3 rejects the multi-topic form with a null payload.
+    for (const std::string& topic : topics) {
+        fnet_conn_write_data_t write{FNET_CONN_WRITE_UPDATE_DETAIL, nullptr, topic.c_str(), 1};
+        g_lib.connectionSend(g_rt.conn, &write);
+    }
+}
+
+void on_connected()
+{
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    if (g_rt.conn == nullptr)
+        return;
+    std::vector<std::string> topics = g_rt.common_topics;
+    topics.push_back(g_rt.user_topic);
+    topics.insert(topics.end(), g_rt.dev_topics.begin(), g_rt.dev_topics.end());
+    std::vector<const char*>   ptrs = c_strings(topics);
+    fnet_conn_subscribe_data_t sub{ptrs.data(), static_cast<int>(ptrs.size())};
+    g_lib.connectionSubscribe(g_rt.conn, &sub);
+    request_detail_locked(g_rt.dev_topics);
+}
+
+void status_callback(fnet_conn_status_t status, void*)
+{
+    const bool connected = status == FNET_CONN_STATUS_CONNECTED;
+    emit({{"event", "connection"}, {"connected", connected}});
+    if (connected)
+        std::thread(on_connected).detach(); // the library's thread must not block
+}
+
+int update_callback(const char** client_id, void*)
+{
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    if (!load_mqtt_config_locked()) {
+        emit({{"event", "connection"}, {"connected", false}, {"needsToken", true}});
+        return 1;
+    }
+    *client_id = g_lib.allocString(g_rt.client_id.c_str(), static_cast<int>(g_rt.client_id.size()));
+    return *client_id == nullptr ? 1 : 0;
+}
+
+void read_callback(fnet_conn_read_data_t* read, void*)
+{
+    switch (read->type) {
+    case FNET_CONN_READ_DEVICE_DETAIL: {
+        auto* detail = static_cast<fnet_dev_detail_t*>(read->data);
+        if (detail != nullptr) {
+            emit({{"event", "detail"}, {"data", detail_json(detail)}});
+            g_lib.freeDevDetail(detail);
+        }
+        break;
+    }
+    case FNET_CONN_READ_SYNC_ONLINE:
+    case FNET_CONN_READ_SYNC_OFFLINE: {
+        auto* info = static_cast<fnet_sync_online_info_t*>(read->data);
+        if (info != nullptr) {
+            emit({{"event", read->type == FNET_CONN_READ_SYNC_ONLINE ? "online" : "offline"}, {"devId", str(info->devId)}});
+            g_lib.freeSyncOnlineInfo(info);
+        }
+        break;
+    }
+    case FNET_CONN_READ_SYS_NOTIFY:
+    case FNET_CONN_READ_UPDATE_NOTIFY:
+    case FNET_CONN_READ_DEVICE_KEEP_ALIVE: g_lib.freeString(static_cast<char*>(read->data)); break;
+    case FNET_CONN_READ_SYNC_LOGIN: g_lib.freeSyncLoginInfo(static_cast<fnet_sync_login_info_t*>(read->data)); break;
+    case FNET_CONN_READ_SYNC_BIND_DEVICE:
+    case FNET_CONN_READ_SYNC_UNBIND_DEVICE:
+        g_lib.freeSyncBindInfo(static_cast<fnet_sync_bind_info_t*>(read->data));
+        emit({{"event", "devicesChanged"}});
+        break;
+    case FNET_CONN_READ_UPLOAD_LOG: g_lib.freeUploadLogInfo(static_cast<fnet_upload_log_info_t*>(read->data)); break;
+    case FNET_CONN_READ_SLICE_STATE: g_lib.freeSliceState(static_cast<fnet_slice_state_t*>(read->data)); break;
+    case FNET_CONN_READ_JOB_DOWNLOAD:
+    case FNET_CONN_READ_JOB_UNZIP: g_lib.freeJobInfo(static_cast<fnet_job_info_t*>(read->data)); break;
+    default: break;
+    }
+    if (read->topic != nullptr)
+        g_lib.freeString(read->topic);
+}
+
+void stop_realtime()
+{
+    void* conn = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(g_rt.mutex);
+        conn      = g_rt.conn;
+        g_rt.conn = nullptr;
+    }
+    if (conn != nullptr) {
+        g_lib.connectionStop(conn);
+        g_lib.freeConnection(conn);
+    }
+}
+
+json connect(const json& params)
+{
+    stop_realtime();
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    g_rt.client_id    = param_str(params, "clientId");
+    g_rt.access_token = param_str(params, "accessToken");
+    g_rt.dev_topics   = params.value("devTopics", std::vector<std::string>());
+    if (!load_mqtt_config_locked())
+        throw BridgeError{FNET_ERROR, "cannot get the real-time connection settings"};
+    fnet_conn_settings_t settings{};
+    settings.clientId       = g_rt.client_id.c_str();
+    settings.statusCallback = status_callback;
+    settings.updateCallback = update_callback;
+    settings.readCallback   = read_callback;
+    check(g_lib.createConnection(&g_rt.conn, &settings), "real-time connection");
+    return json::object();
+}
+
+json set_token(const json& params)
+{
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    g_rt.access_token = param_str(params, "accessToken");
+    return json::object();
+}
+
+json update_detail(const json&)
+{
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    request_detail_locked(g_rt.dev_topics);
+    return json::object();
+}
+
+// Commands to one printer over the real-time connection.
+json command(const json& params)
+{
+    const std::string topic  = param_str(params, "devTopic");
+    const std::string action = param_str(params, "action");
+    std::lock_guard<std::mutex> lock(g_rt.mutex);
+    if (g_rt.conn == nullptr)
+        throw BridgeError{FNET_ERROR, "not connected"};
+    fnet_conn_write_data_t write{};
+    write.topic = topic.c_str();
+    write.qos   = 1;
+    fnet_light_ctrl_t         light{};
+    fnet_camera_stream_ctrl_t camera{};
+    fnet_matl_station_ctrl_t  station{};
+    if (action == "light") {
+        light.lightStatus = require(params, "on").get<bool>() ? "open" : "close";
+        write.type        = FNET_CONN_WRITE_LIGHT_CTRL;
+        write.data        = &light;
+    } else if (action == "camera") {
+        camera.action = require(params, "open").get<bool>() ? "open" : "close";
+        write.type    = FNET_CONN_WRITE_CAMERA_STREAM_CTRL;
+        write.data    = &camera;
+    } else if (action == "loadFilament" || action == "unloadFilament") {
+        station.slotId = require(params, "slot").get<int>();
+        station.action = action == "loadFilament" ? 0 : 1;
+        write.type     = FNET_CONN_WRITE_MATL_STATION_CTRL;
+        write.data     = &station;
+    } else {
+        throw BridgeError{FNET_ERROR, "unknown command: " + action};
+    }
+    check(g_lib.connectionSend(g_rt.conn, &write), action);
+    return json::object();
+}
+
 json dispatch(const std::string& method, const json& params)
 {
     if (method == "hello")
@@ -356,6 +595,11 @@ json dispatch(const std::string& method, const json& params)
     if (method == "lanDevList") return lan_dev_list(params);
     if (method == "lanDevDetail") return lan_dev_detail(params);
     if (method == "lanLight") return lan_light(params);
+    if (method == "connect") return connect(params);
+    if (method == "setToken") return set_token(params);
+    if (method == "updateDetail") return update_detail(params);
+    if (method == "command") return command(params);
+    if (method == "disconnect") { stop_realtime(); return json::object(); }
     throw BridgeError{FNET_ERROR, "unknown method: " + method};
 }
 
@@ -383,9 +627,11 @@ int main()
             reply["code"]  = FNET_ERROR;
             reply["error"] = e.what();
         }
-        std::cout << reply.dump() << std::endl;
+        emit(reply);
     }
-    if (g_lib.initialized)
+    if (g_lib.initialized) {
+        stop_realtime();
         g_lib.uninitlize();
+    }
     return 0;
 }

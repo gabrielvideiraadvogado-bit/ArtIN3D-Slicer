@@ -37,13 +37,22 @@
   .swatch.emptyslot { background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--line) 4px, var(--line) 8px); }
   .error-box { grid-column: 1 / -1; background: #fdecec; color: #8a1f1f; border-radius: 8px; padding: 10px 14px; }
   .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 12px; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .slot button { margin-top: 4px; padding: 2px 8px; font-size: 11px; }
+  .camera { margin-top: 12px; display: none; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; }
+  .camera video, .camera img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .camera .wait { color: #ccc; padding: 20px; font-size: 12px; }
+  .live { font-size: 12px; } .live.on::before { content: '●'; color: var(--ok); margin-right: 4px; } .live.off::before { content: '●'; color: var(--muted); margin-right: 4px; }
 </style>
+<script src="lib/flv.min.js"></script>
+<script src="lib/hls.min.js"></script>
 </head>
 <body>
 <header>
   <div>
     <h1>Impressoras Flashforge</h1>
     <div id="account" class="muted">Carregando…</div>
+    <div id="live" class="live off muted" hidden>Tempo real desligado</div>
   </div>
   <div>
     <button id="refresh" hidden>Atualizar</button>
@@ -67,6 +76,9 @@
   const duration = (s) => { s = Math.max(0, Math.round(s || 0)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60); return h ? `${h} h ${m} min` : `${m} min`; };
 
   let account = { loggedIn: false };
+  let printers = [];          // last list, with the newest detail merged in
+  const cameras = {};         // devId -> { open, url, player }
+  const busy = {};            // devId -> action waiting for the printer
 
   function renderAccount() {
     $('login').hidden = !account.available || account.loggedIn;
@@ -85,14 +97,13 @@
     }
   }
 
-  function card(printer) {
+  function info(printer) {
     const d = printer.detail || {};
     const status = d.status || printer.status || 'offline';
-    let html = `<div class="card"><h2>${esc(printer.name)}</h2><div class="muted">${esc(printer.model)}</div>`;
+    let html = `<h2>${esc(printer.name)}</h2><div class="muted">${esc(printer.model)}</div>`;
     html += `<span class="status ${esc(status)}">${esc(STATUS[status] || status)}</span>`;
-    if (printer.detailError) {
-      html += `<div class="muted" style="margin-top:10px">Sem detalhes agora: ${esc(printer.detailError)}</div></div>`;
-      return html;
+    if (printer.detailError && !printer.detail) {
+      return html + `<div class="muted" style="margin-top:10px">Sem detalhes agora: ${esc(printer.detailError)}</div>`;
     }
     html += '<div class="row">' +
       `<div class="metric"><span class="muted">Bico</span><b>${temp(d.nozzleTemp, d.nozzleTargetTemp)}</b></div>` +
@@ -108,14 +119,118 @@
         `<span class="muted">${pct}% · camada ${d.printLayer || 0}/${d.targetPrintLayer || 0}${left}</span></div>`;
     }
     const slots = (d.matlStation && d.matlStation.slots) || [];
+    const idle = status === 'ready' || status === 'completed' || status === 'cancel';
+    const dev = esc(printer.devId);
     if (slots.length) {
-      html += '<div class="slots">' + slots.map((s) =>
-        `<div class="slot"><div class="swatch ${s.hasFilament ? '' : 'emptyslot'}" style="background-color:${s.hasFilament ? color(s.color) : ''}"></div>` +
-        `${esc(s.slotId)}: ${s.hasFilament ? esc(s.material || '?') : 'vazia'}</div>`).join('') + '</div>';
+      const loaded = d.matlStation.currentLoadSlot;
+      html += '<div class="slots">' + slots.map((s) => {
+        const isLoaded = s.slotId === loaded;
+        const btn = !s.hasFilament ? '' : isLoaded
+          ? `<button data-act="unloadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${idle && !busy[printer.devId] ? '' : 'disabled'}>Descarregar</button>`
+          : `<button data-act="loadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${idle && !busy[printer.devId] ? '' : 'disabled'}>Carregar</button>`;
+        return `<div class="slot"><div class="swatch ${s.hasFilament ? '' : 'emptyslot'}" style="background-color:${s.hasFilament ? color(s.color) : ''}"></div>` +
+          `${esc(s.slotId)}: ${s.hasFilament ? esc(s.material || '?') : 'vazia'}${isLoaded ? ' (no bico)' : ''}<br>${btn}</div>`;
+      }).join('') + '</div>';
     }
-    html += `<div class="footer"><span class="muted">Câmera, luz e envio de arquivos: em breve</span></div></div>`;
     return html;
   }
+
+  function card(printer) {
+    const dev = esc(printer.devId);
+    const d = printer.detail || {};
+    const lightOn = d.lightStatus === 'open';
+    return `<div class="card" id="card-${dev}"><div id="info-${dev}">${info(printer)}</div>` +
+      `<div class="actions">` +
+      `<button data-act="light" data-dev="${dev}" data-on="${lightOn ? 0 : 1}" id="light-${dev}">${lightOn ? 'Apagar luz' : 'Acender luz'}</button>` +
+      (d.camera === 2 ? '' : `<button data-act="camera" data-dev="${dev}" id="cambtn-${dev}">Ver câmera</button>`) +
+      `</div><div class="camera" id="cam-${dev}"><div class="wait">Abrindo a câmera…</div></div>` +
+      `<div class="footer"><span class="muted" id="msg-${dev}"></span></div></div>`;
+  }
+
+  function updateCard(printer) {
+    const dev = printer.devId;
+    const infoEl = document.getElementById('info-' + dev);
+    if (!infoEl) return renderPrinters();
+    infoEl.innerHTML = info(printer);
+    const d = printer.detail || {};
+    const light = document.getElementById('light-' + dev);
+    if (light && !busy[dev]) {
+      light.textContent = d.lightStatus === 'open' ? 'Apagar luz' : 'Acender luz';
+      light.dataset.on = d.lightStatus === 'open' ? 0 : 1;
+    }
+    const cam = cameras[dev];
+    if (cam && cam.open && d.cameraStreamUrl && d.cameraStreamUrl !== cam.url) startCamera(dev, d.cameraStreamUrl);
+  }
+
+  function renderPrinters(error) {
+    let html = error ? `<div class="error-box">Não foi possível atualizar: ${esc(error)}</div>` : '';
+    html += printers.length ? printers.map(card).join('')
+      : (error ? '' : '<div class="empty muted">Nenhuma impressora vinculada a esta conta.</div>');
+    $('printers').innerHTML = html;
+    for (const dev of Object.keys(cameras)) if (cameras[dev].open) {
+      const url = cameras[dev].url; cameras[dev].url = null;
+      document.getElementById('cam-' + dev) && (document.getElementById('cam-' + dev).style.display = 'block');
+      if (url) startCamera(dev, url);
+    }
+  }
+
+  function stopCamera(dev) {
+    const cam = cameras[dev];
+    if (cam && cam.player) { try { cam.player.destroy(); } catch (e) {} }
+    delete cameras[dev];
+    const box = document.getElementById('cam-' + dev);
+    if (box) { box.style.display = 'none'; box.innerHTML = '<div class="wait">Abrindo a câmera…</div>'; }
+    const btn = document.getElementById('cambtn-' + dev);
+    if (btn) btn.textContent = 'Ver câmera';
+  }
+
+  function startCamera(dev, url) {
+    const box = document.getElementById('cam-' + dev);
+    const cam = cameras[dev];
+    if (!box || !cam) return;
+    if (cam.player) { try { cam.player.destroy(); } catch (e) {} cam.player = null; }
+    cam.url = url;
+    box.style.display = 'block';
+    if (/\.m3u8(\?|$|\/|#)/i.test(url) && window.Hls && Hls.isSupported()) {
+      box.innerHTML = '<video muted autoplay playsinline></video>';
+      cam.player = new Hls({ lowLatencyMode: true });
+      cam.player.loadSource(url); cam.player.attachMedia(box.firstChild);
+    } else if (/\.flv(\?|$|\/|#)/i.test(url) && window.flvjs && flvjs.isSupported()) {
+      box.innerHTML = '<video muted autoplay playsinline></video>';
+      cam.player = flvjs.createPlayer({ type: 'flv', isLive: true, url }, { enableStashBuffer: false });
+      cam.player.attachMediaElement(box.firstChild); cam.player.load(); cam.player.play();
+    } else {
+      box.innerHTML = `<img alt="Câmera" src="${esc(url)}">`;
+    }
+  }
+
+  document.addEventListener('click', (ev) => {
+    const b = ev.target.closest('button[data-act]');
+    if (!b) return;
+    const dev = b.dataset.dev, act = b.dataset.act;
+    const printer = printers.find((p) => p.devId === dev) || {};
+    if (act === 'camera') {
+      if (cameras[dev]) { stopCamera(dev); post('camera', { devId: dev, open: false }); return; }
+      cameras[dev] = { open: true, url: null, player: null };
+      b.textContent = 'Fechar câmera';
+      document.getElementById('cam-' + dev).style.display = 'block';
+      post('camera', { devId: dev, open: true });
+      const url = printer.detail && printer.detail.cameraStreamUrl;
+      if (url) startCamera(dev, url);
+      return;
+    }
+    if (act === 'loadFilament' || act === 'unloadFilament') {
+      const verb = act === 'loadFilament' ? 'carregar o filamento da posição' : 'descarregar o filamento da posição';
+      if (!window.confirm(`Confirma ${verb} ${b.dataset.slot} na ${printer.name || 'impressora'}? A impressora vai aquecer o bico.`)) return;
+      busy[dev] = act; b.disabled = true;
+      post(act, { devId: dev, slot: Number(b.dataset.slot) });
+    } else if (act === 'light') {
+      busy[dev] = act; b.disabled = true;
+      post('light', { devId: dev, on: b.dataset.on === '1' });
+    }
+    const msg = document.getElementById('msg-' + dev);
+    if (msg) msg.textContent = 'Enviando comando…';
+  });
 
   window.artin3dFlashforge = {
     receive(message) {
@@ -127,11 +242,28 @@
       } else if (message.type === 'printers') {
         $('refresh').disabled = false;
         if (!account.loggedIn) return;
-        const { printers, error } = message.data;
-        let html = error ? `<div class="error-box">Não foi possível atualizar: ${esc(error)}</div>` : '';
-        html += printers.length ? printers.map(card).join('')
-          : (error ? '' : '<div class="empty muted">Nenhuma impressora vinculada a esta conta.</div>');
-        $('printers').innerHTML = html;
+        const error = message.data.error;
+        if (!error || message.data.printers.length) printers = message.data.printers;
+        renderPrinters(error);
+      } else if (message.type === 'detail') {
+        const p = printers.find((x) => x.devId === message.data.devId);
+        if (p) { p.detail = message.data; p.status = message.data.status; updateCard(p); }
+      } else if (message.type === 'offline' || message.type === 'online') {
+        const p = printers.find((x) => x.devId === message.data.devId);
+        if (p && message.type === 'offline') { p.detail = Object.assign({}, p.detail, { status: 'offline' }); updateCard(p); }
+      } else if (message.type === 'connection') {
+        $('live').hidden = !account.loggedIn;
+        $('live').className = 'live muted ' + (message.data.connected ? 'on' : 'off');
+        $('live').textContent = message.data.connected ? 'Tempo real ligado' : 'Tempo real desligado' + (message.data.error ? ': ' + message.data.error : '');
+      } else if (message.type === 'commandResult') {
+        const dev = message.data.devId;
+        delete busy[dev];
+        const msg = document.getElementById('msg-' + dev);
+        if (msg) msg.textContent = message.data.error ? 'Falhou: ' + message.data.error : 'Comando enviado.';
+        const p = printers.find((x) => x.devId === dev);
+        if (p) updateCard(p);
+        const light = document.getElementById('light-' + dev);
+        if (light) light.disabled = false;
       }
     }
   };

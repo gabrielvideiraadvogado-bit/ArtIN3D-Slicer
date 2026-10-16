@@ -974,6 +974,19 @@ else ()
 endif ()
 target_include_directories(libslic3r_gui PRIVATE Utils ${CMAKE_CURRENT_BINARY_DIR})
 
+# ArtIN3D: the printer connection code ported from ElegooSlicer was not written for Orca's
+# -Werror; its warnings stay visible but do not fail the build.
+if (NOT MSVC)
+    file(GLOB _artin3d_ported_sources CONFIGURE_DEPENDS
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/Elegoo/*.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/GUI/Elegoo/*.cpp)
+    list(APPEND _artin3d_ported_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/WebviewIPCManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Utils/IPCMessage.cpp)
+    set_source_files_properties(${_artin3d_ported_sources} TARGET_DIRECTORY libslic3r_gui
+        PROPERTIES COMPILE_OPTIONS "-Wno-error")
+endif ()
+
 if (WIN32)
     target_include_directories(libslic3r_gui SYSTEM PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../deps/WebView2/include)
     target_link_libraries(libslic3r_gui Advapi32)
