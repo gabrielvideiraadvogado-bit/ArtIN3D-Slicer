@@ -266,7 +266,8 @@ function build_slicer() {
                     -DCMAKE_IGNORE_PREFIX_PATH="${CMAKE_IGNORE_PREFIX_PATH}" \
                     ${CMAKE_POLICY_COMPAT}
             fi
-            cmake --build . --config "$BUILD_CONFIG" --target "$SLICER_BUILD_TARGET"
+            # ArtIN3D: ARTIN3D_KEEP_GOING=1 makes Ninja report every compile error in one run.
+            cmake --build . --config "$BUILD_CONFIG" --target "$SLICER_BUILD_TARGET" ${ARTIN3D_KEEP_GOING:+-- -k 0}
         )
 
         # -T also runs the tests; ORCA_TESTS_BUILD_ONLY=1 builds them without

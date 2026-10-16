@@ -200,6 +200,8 @@ jobs:
         # arm64 only: build the tests here; the unit_tests_macos job runs them.
         env:
           ORCA_TESTS_BUILD_ONLY: ${{ inputs.arch == 'arm64' && '1' || '' }}
+          # ArtIN3D: list every compile error of a run instead of stopping at the first.
+          ARTIN3D_KEEP_GOING: '1'
         run: |
           ./build_release_macos.sh -s -n -x ${{ !vars.SELF_HOSTED && '-j 3' || '' }} -a ${{ inputs.arch }} -t 10.15 ${{ inputs.arch == 'arm64' && '-T' || '' }}
 

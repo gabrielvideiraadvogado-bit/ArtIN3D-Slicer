@@ -21,6 +21,8 @@
 #endif
 
 namespace Slic3r {
+// ArtIN3D: ElegooSlicer reached GUI::wxGetApp unqualified.
+using GUI::wxGetApp;
 
 IPCClient::IPCClient() {}
 

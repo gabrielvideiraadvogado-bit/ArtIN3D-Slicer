@@ -30,6 +30,8 @@
         } \
     } while (0)
 namespace Slic3r {
+// ArtIN3D: ElegooSlicer reached GUI::wxGetApp unqualified.
+using GUI::wxGetApp;
 
 namespace fs = boost::filesystem;
 
