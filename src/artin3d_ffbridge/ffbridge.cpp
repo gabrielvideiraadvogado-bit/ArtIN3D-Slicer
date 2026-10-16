@@ -21,7 +21,9 @@
 
 #include <nlohmann/json.hpp>
 
+#include <CommonCrypto/CommonDigest.h>
 #include <dlfcn.h>
+#include <fstream>
 #include <iostream>
 #include <mutex>
 #include <random>
@@ -84,6 +86,10 @@ struct Lib
     FNET_FUNC(freeUploadLogInfo)
     FNET_FUNC(freeSliceState)
     FNET_FUNC(freeJobInfo)
+    FNET_FUNC(wanDevSendGcodeClound)
+    FNET_FUNC(freeCloundGcodeData)
+    FNET_FUNC(wanDevAddCloundJob)
+    FNET_FUNC(freeAddCloudJobResults)
 #undef FNET_FUNC
     std::string version;
     bool        initialized = false;
@@ -227,6 +233,7 @@ json hello(const json& params)
         LOAD(connectionSend) LOAD(connectionSendMulti) LOAD(freeWriteMultiResult) LOAD(connectionSubscribe)
         LOAD(allocString) LOAD(freeSyncLoginInfo) LOAD(freeSyncBindInfo) LOAD(freeSyncOnlineInfo)
         LOAD(freeUploadLogInfo) LOAD(freeSliceState) LOAD(freeJobInfo)
+        LOAD(wanDevSendGcodeClound) LOAD(freeCloundGcodeData) LOAD(wanDevAddCloundJob) LOAD(freeAddCloudJobResults)
 #undef LOAD
         g_lib.version = str(g_lib.getVersion());
         if (g_lib.version.rfind(SUPPORTED_VERSION_PREFIX, 0) != 0)
@@ -578,6 +585,180 @@ json command(const json& params)
     return json::object();
 }
 
+// ---- sending a file to a cloud printer ----------------------------------------------
+// Same sequence as Flash Studio (WanDevSendGcodeThd): upload the file and its thumbnail to
+// Flashforge's storage, register a cloud job, then tell the printer over the real-time
+// connection to fetch and (optionally) start it.
+
+// Flashforge's job API identifies files by MD5 (an integrity check, not security).
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+std::string file_md5(const std::string& path)
+{
+    std::ifstream in(path, std::ios::binary);
+    if (!in)
+        throw BridgeError{FNET_ERROR, "cannot read " + path};
+    CC_MD5_CTX ctx;
+    CC_MD5_Init(&ctx);
+    std::vector<char> buf(1 << 16);
+    while (in) {
+        in.read(buf.data(), buf.size());
+        if (in.gcount() > 0)
+            CC_MD5_Update(&ctx, buf.data(), static_cast<CC_LONG>(in.gcount()));
+    }
+    unsigned char digest[CC_MD5_DIGEST_LENGTH];
+    CC_MD5_Final(digest, &ctx);
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    for (unsigned char b : digest) {
+        out += hex[b >> 4];
+        out += hex[b & 15];
+    }
+    return out;
+}
+#pragma clang diagnostic pop
+
+long long file_size(const std::string& path)
+{
+    std::ifstream in(path, std::ios::binary | std::ios::ate);
+    return in ? static_cast<long long>(in.tellg()) : 0;
+}
+
+std::string extension(const std::string& path)
+{
+    const size_t dot = path.find_last_of('.');
+    return dot == std::string::npos ? std::string() : path.substr(dot + 1);
+}
+
+int upload_progress(long long now, long long total, void*)
+{
+    if (total > 0)
+        emit({{"event", "sendProgress"}, {"progress", static_cast<double>(now) / static_cast<double>(total)}});
+    return 0;
+}
+
+json send_file(const json& params)
+{
+    const std::string client_id   = param_str(params, "clientId");
+    const std::string token       = param_str(params, "accessToken");
+    const std::string dev_id      = param_str(params, "devId");
+    const std::string serial      = param_str(params, "serialNumber");
+    const std::string topic       = param_str(params, "devTopic");
+    const std::string gcode_path  = param_str(params, "filePath");
+    const std::string thumb_path  = param_str(params, "thumbPath");
+    const std::string dst_name    = param_str(params, "dstName");
+    const bool        print_now   = params.value("printNow", false);
+    const bool        leveling    = params.value("leveling", false);
+    const bool        timelapse   = params.value("timeLapse", false);
+    const bool        use_station = params.value("useMatlStation", false);
+
+    // Strings must outlive the library calls below.
+    std::vector<std::string>             names, tool_colors, slot_colors;
+    std::vector<fnet_material_mapping_t> mappings;
+    const json                           mapping_list = params.value("mappings", json::array());
+    names.reserve(mapping_list.size());
+    tool_colors.reserve(mapping_list.size());
+    slot_colors.reserve(mapping_list.size());
+    for (const json& m : mapping_list) {
+        names.push_back(m.value("materialName", std::string()));
+        tool_colors.push_back(m.value("toolColor", std::string()));
+        slot_colors.push_back(m.value("slotColor", std::string()));
+        fnet_material_mapping_t mm{};
+        mm.toolId            = m.value("toolId", 0);
+        mm.slotId            = m.value("slotId", 0);
+        mm.materialName      = names.back().c_str();
+        mm.toolMaterialColor = tool_colors.back().c_str();
+        mm.slotMaterialColor = slot_colors.back().c_str();
+        mappings.push_back(mm);
+    }
+
+    fnet_send_gcode_data_t send{};
+    send.gcodeFilePath       = gcode_path.c_str();
+    send.thumbFilePath       = thumb_path.c_str();
+    send.gcodeDstName        = dst_name.c_str();
+    send.printNow            = print_now;
+    send.levelingBeforePrint = leveling;
+    send.timeLapseVideo      = timelapse;
+    send.useMatlStation      = use_station;
+    send.gcodeToolCnt        = static_cast<int>(mappings.size());
+    send.materialMappings    = mappings.empty() ? nullptr : mappings.data();
+    send.callback            = upload_progress;
+
+    fnet_clound_gcode_data_t* stored = nullptr;
+    check(g_lib.wanDevSendGcodeClound(client_id.c_str(), token.c_str(), &send, &stored, 10 * 60 * 1000), "upload file");
+
+    const std::string gcode_type = extension(gcode_path);
+    const std::string gcode_md5  = file_md5(gcode_path);
+    const std::string thumb_type = extension(thumb_path);
+    const std::string thumb_md5  = file_md5(thumb_path);
+    const std::string thumb_name = dst_name.substr(0, dst_name.find_last_of('.') + 1) + gcode_type;
+    const char*       dev_ids[]  = {dev_id.c_str()};
+
+    fnet_clound_job_data_t job{};
+    job.devIds              = dev_ids;
+    job.devCnt              = 1;
+    job.gcodeName           = dst_name.c_str();
+    job.gcodeType           = gcode_type.c_str();
+    job.gcodeMd5            = gcode_md5.c_str();
+    job.gcodeSize           = file_size(gcode_path);
+    job.thumbName           = thumb_name.c_str();
+    job.thumbType           = thumb_type.c_str();
+    job.thumbMd5            = thumb_md5.c_str();
+    job.thumbSize           = file_size(thumb_path);
+    job.bucketName          = stored->bucketName;
+    job.endpoint            = stored->endpoint;
+    job.gcodeStorageKey     = stored->gcodeStorageKey;
+    job.gcodeStorageUrl     = stored->gcodeStorageUrl;
+    job.thumbStorageKey     = stored->thumbStorageKey;
+    job.thumbStorageUrl     = stored->thumbStorageUrl;
+    job.unionId             = "";
+    job.plateNo             = params.value("plate", 1);
+    job.printNow            = print_now;
+    job.levelingBeforePrint = leveling;
+    job.timeLapseVideo      = timelapse;
+    job.useMatlStation      = use_station;
+    job.gcodeToolCnt        = send.gcodeToolCnt;
+    job.materialMappings    = send.materialMappings;
+
+    fnet_add_clound_job_result_t* results = nullptr;
+    int                           count   = 0;
+    const int add_ret = g_lib.wanDevAddCloundJob(client_id.c_str(), token.c_str(), &job, &results, &count, TIMEOUT_MS);
+    if (add_ret != FNET_OK) {
+        g_lib.freeCloundGcodeData(stored);
+        check(add_ret, "create print job");
+    }
+    std::string job_id;
+    int         job_error = FNET_ADD_CLOUND_JOB_OK;
+    for (int i = 0; i < count; ++i)
+        if (str(results[i].devId) == dev_id) {
+            job_id    = str(results[i].jobId);
+            job_error = results[i].error;
+        }
+    g_lib.freeAddCloudJobResults(results, count);
+    if (job_id.empty() || job_error != FNET_ADD_CLOUND_JOB_OK) {
+        g_lib.freeCloundGcodeData(stored);
+        static const char* reasons[] = {"ok", "printer busy", "printer not found", "Flashforge server error"};
+        throw BridgeError{FNET_ERROR, std::string("print job refused: ") +
+                                          (job_error >= 0 && job_error <= 3 ? reasons[job_error] : "unknown error")};
+    }
+
+    const char* serials[] = {serial.c_str()};
+    const char* job_ids[] = {job_id.c_str()};
+    job.devSerialNumbers  = serials;
+    job.jobIds            = job_ids;
+    int start_ret         = FNET_ERROR;
+    {
+        std::lock_guard<std::mutex> lock(g_rt.mutex);
+        if (g_rt.conn != nullptr) {
+            fnet_conn_write_data_t write{FNET_CONN_WRITE_START_CLOUND_JOB, &job, topic.c_str(), 1};
+            start_ret = g_lib.connectionSend(g_rt.conn, &write);
+        }
+    }
+    g_lib.freeCloundGcodeData(stored);
+    check(start_ret, "notify the printer");
+    return {{"jobId", job_id}};
+}
+
 json dispatch(const std::string& method, const json& params)
 {
     if (method == "hello")
@@ -599,6 +780,7 @@ json dispatch(const std::string& method, const json& params)
     if (method == "setToken") return set_token(params);
     if (method == "updateDetail") return update_detail(params);
     if (method == "command") return command(params);
+    if (method == "sendFile") return send_file(params);
     if (method == "disconnect") { stop_realtime(); return json::object(); }
     throw BridgeError{FNET_ERROR, "unknown method: " + method};
 }

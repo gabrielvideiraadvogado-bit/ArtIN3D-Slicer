@@ -8,6 +8,8 @@
 #include "libslic3r/Utils.hpp"
 
 #include <boost/filesystem.hpp>
+#include <boost/nowide/fstream.hpp>
+#include <wx/filedlg.h>
 #include <boost/log/trivial.hpp>
 #include <wx/sizer.h>
 
@@ -22,6 +24,106 @@ const char* LOGIN_URL = "https://desktop.voxelshare.com";
 // While the panel is visible: without the real-time connection the printers are polled;
 // with it they push their state, and the timer only asks for a fresh full detail.
 const int REFRESH_INTERVAL_MS = 15000;
+
+std::string trim(std::string s)
+{
+    const auto b = s.find_first_not_of(" \t\r\n");
+    const auto e = s.find_last_not_of(" \t\r\n");
+    return b == std::string::npos ? std::string() : s.substr(b, e - b + 1);
+}
+
+std::vector<std::string> split(const std::string& s, char sep)
+{
+    std::vector<std::string> out;
+    std::string              part;
+    for (char ch : s) {
+        if (ch == sep) {
+            out.push_back(trim(part));
+            part.clear();
+        } else {
+            part += ch;
+        }
+    }
+    out.push_back(trim(part));
+    return out;
+}
+
+std::string base64_decode(const std::string& in)
+{
+    static const std::string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::string out;
+    int         val = 0, bits = -8;
+    for (char ch : in) {
+        const auto pos = chars.find(ch);
+        if (pos == std::string::npos)
+            continue;
+        val = (val << 6) + static_cast<int>(pos);
+        bits += 6;
+        if (bits >= 0) {
+            out.push_back(static_cast<char>((val >> bits) & 0xFF));
+            bits -= 8;
+        }
+    }
+    return out;
+}
+
+// Reads what the send dialog needs from a sliced G-code: the PNG thumbnail Orca embeds
+// ("; thumbnail begin" ... "; thumbnail end") and, from the config block, the colour and
+// type of each filament with the tools that the print actually uses.
+nlohmann::json inspect_gcode(const boost::filesystem::path& path, const boost::filesystem::path& thumb_out, std::string& error)
+{
+    boost::nowide::ifstream in(path.string());
+    if (!in) {
+        error = "cannot read the file";
+        return nullptr;
+    }
+    std::string line, thumb_b64, colours, types, used_g;
+    bool        in_thumb = false, have_thumb = false;
+    while (std::getline(in, line)) {
+        if (line.rfind("; thumbnail begin", 0) == 0) {
+            in_thumb = !have_thumb; // keep the first one
+            thumb_b64.clear();
+            continue;
+        }
+        if (line.rfind("; thumbnail end", 0) == 0) {
+            have_thumb = have_thumb || in_thumb;
+            in_thumb   = false;
+            continue;
+        }
+        if (in_thumb && line.size() > 2) {
+            thumb_b64 += line.substr(2);
+            continue;
+        }
+        if (line.rfind("; filament_colour = ", 0) == 0)
+            colours = line.substr(20);
+        else if (line.rfind("; filament_type = ", 0) == 0)
+            types = line.substr(18);
+        else if (line.rfind("; filament used [g] = ", 0) == 0)
+            used_g = line.substr(22);
+    }
+    if (!have_thumb) {
+        error = "the file has no thumbnail; slice it with a Flashforge printer profile";
+        return nullptr;
+    }
+    boost::nowide::ofstream thumb(thumb_out.string(), std::ios::binary);
+    thumb << base64_decode(thumb_b64);
+    thumb.close();
+
+    const auto col  = split(colours, ';');
+    const auto typ  = split(types, ';');
+    const auto used = split(used_g, ',');
+    nlohmann::json tools = nlohmann::json::array();
+    for (size_t i = 0; i < col.size(); ++i) {
+        double grams = 0.;
+        try {
+            grams = i < used.size() ? std::stod(used[i]) : 0.;
+        } catch (const std::exception&) {}
+        if (used_g.empty() || grams > 0.)
+            tools.push_back({{"toolId", static_cast<int>(i)}, {"color", col[i]}, {"type", i < typ.size() ? typ[i] : std::string()},
+                             {"grams", grams}});
+    }
+    return {{"fileName", path.filename().string()}, {"tools", tools}};
+}
 
 } // namespace
 
@@ -113,8 +215,10 @@ void FlashforgePanel::refresh_printers()
             m_refreshing = false;
             send_account_state();
             send_to_page("printers", {{"printers", printers}, {"error", error}});
-            if (error.empty())
+            if (error.empty()) {
+                m_printers = printers;
                 connect_realtime(printers);
+            }
         });
     }).detach();
 }
@@ -159,6 +263,8 @@ void FlashforgePanel::on_cloud_event(const nlohmann::json& event)
         send_to_page(type, {{"devId", event.value("devId", std::string())}});
     else if (type == "devicesChanged")
         refresh_printers();
+    else if (type == "sendProgress")
+        send_to_page("sendProgress", {{"progress", event.value("progress", 0.)}});
 }
 
 void FlashforgePanel::run_command(const std::string& dev_id, const std::string& action, const nlohmann::json& args)
@@ -253,6 +359,11 @@ void FlashforgePanel::on_script_message(wxWebViewEvent& event)
                 send_to_page("printers", {{"printers", nlohmann::json::array()}, {"error", ""}});
             });
         }).detach();
+    } else if (command == "pickFile") {
+        pick_file(message.value("data", nlohmann::json::object()).value("devId", std::string()));
+    } else if (command == "sendFile") {
+        const nlohmann::json data = message.value("data", nlohmann::json::object());
+        send_file(data.value("devId", std::string()), data);
     } else if (command == "light" || command == "camera" || command == "loadFilament" || command == "unloadFilament") {
         const nlohmann::json data = message.value("data", nlohmann::json::object());
         run_command(data.value("devId", std::string()), command, data);
@@ -261,6 +372,57 @@ void FlashforgePanel::on_script_message(wxWebViewEvent& event)
     } else if (command == "openFlashStudio") {
         wxLaunchDefaultApplication("/Applications/Flash Studio.app");
     }
+}
+
+void FlashforgePanel::pick_file(const std::string& dev_id)
+{
+    wxFileDialog dialog(this, _L("Choose the sliced file to send"), wxEmptyString, wxEmptyString, "G-code (*.gcode)|*.gcode",
+                        wxFD_OPEN | wxFD_FILE_MUST_EXIST);
+    if (dialog.ShowModal() != wxID_OK)
+        return;
+    const boost::filesystem::path file(dialog.GetPath().ToUTF8().data());
+    const boost::filesystem::path thumb = boost::filesystem::temp_directory_path() /
+                                          boost::filesystem::unique_path("artin3d-ff-thumb-%%%%%%%%.png");
+    std::string    error;
+    nlohmann::json info = inspect_gcode(file, thumb, error);
+    if (!error.empty()) {
+        send_to_page("sendResult", {{"devId", dev_id}, {"error", error}});
+        return;
+    }
+    m_pending_files[dev_id] = {{"filePath", file.string()}, {"thumbPath", thumb.string()}, {"dstName", file.filename().string()}};
+    info["devId"]           = dev_id;
+    send_to_page("sendSetup", info);
+}
+
+void FlashforgePanel::send_file(const std::string& dev_id, const nlohmann::json& options)
+{
+    const auto file = m_pending_files.find(dev_id);
+    nlohmann::json printer;
+    for (const nlohmann::json& p : m_printers)
+        if (p.value("devId", std::string()) == dev_id)
+            printer = p;
+    if (file == m_pending_files.end() || printer.is_null()) {
+        send_to_page("sendResult", {{"devId", dev_id}, {"error", "choose the file again"}});
+        return;
+    }
+    nlohmann::json job = file->second;
+    job["printNow"]       = options.value("printNow", false);
+    job["leveling"]       = options.value("leveling", false);
+    job["timeLapse"]      = options.value("timeLapse", false);
+    job["mappings"]       = options.value("mappings", nlohmann::json::array());
+    job["useMatlStation"] = !job["mappings"].empty();
+    m_pending_files.erase(file);
+    std::weak_ptr<bool> alive = m_alive;
+    std::thread([this, alive, dev_id, printer, job]() {
+        std::string error;
+        FlashforgeCloud::instance().send_file(printer, job, error);
+        boost::system::error_code ignored;
+        boost::filesystem::remove(job.value("thumbPath", std::string()), ignored);
+        wxGetApp().CallAfter([this, alive, dev_id, error]() {
+            if (!alive.expired() && *alive.lock())
+                send_to_page("sendResult", {{"devId", dev_id}, {"error", error}});
+        });
+    }).detach();
 }
 
 FlashforgeLoginDialog::FlashforgeLoginDialog(wxWindow* parent)

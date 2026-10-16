@@ -30,8 +30,6 @@ const char* SECTION = "flashforge_cloud";
 const char* FLASH_STUDIO_LIBRARY = "/Applications/Flash Studio.app/Contents/MacOS/libFlashNetwork.dylib";
 // Refresh the access token this long before it expires.
 const int64_t REFRESH_MARGIN_S = 10 * 60;
-// Requests to the cloud time out inside the helper after 15 s; this only guards a hung helper.
-const auto REPLY_TIMEOUT = std::chrono::seconds(60);
 
 int64_t now_s()
 {
@@ -192,7 +190,9 @@ void FlashforgeCloud::stop_bridge()
     m_realtime  = false;
 }
 
-nlohmann::json FlashforgeCloud::call(const std::string& method, const nlohmann::json& params, std::string& error)
+// Requests to the cloud time out inside the helper (15 s, uploads 10 min); timeout_s only
+// guards against a hung helper.
+nlohmann::json FlashforgeCloud::call(const std::string& method, const nlohmann::json& params, std::string& error, int timeout_s)
 {
     std::lock_guard<std::recursive_mutex> lock(m_mutex);
     error.clear();
@@ -213,7 +213,7 @@ nlohmann::json FlashforgeCloud::call(const std::string& method, const nlohmann::
     nlohmann::json reply;
     {
         std::unique_lock<std::mutex> reply_lock(m_reply_mutex);
-        const bool answered = m_reply_cv.wait_for(reply_lock, REPLY_TIMEOUT,
+        const bool answered = m_reply_cv.wait_for(reply_lock, std::chrono::seconds(timeout_s),
                                                   [&]() { return m_replies.count(id) > 0 || !m_bridge_alive; });
         if (!answered || m_replies.count(id) == 0) {
             error = "the Flashforge helper did not answer";
@@ -411,6 +411,25 @@ bool FlashforgeCloud::command(const std::string& dev_topic, const std::string& a
     params["devTopic"]    = dev_topic;
     params["action"]      = action;
     call("command", params, error);
+    return error.empty();
+}
+
+bool FlashforgeCloud::send_file(const nlohmann::json& printer, const nlohmann::json& job, std::string& error)
+{
+    std::lock_guard<std::recursive_mutex> lock(m_mutex);
+    if (!ensure_session(error))
+        return false;
+    if (!m_realtime) {
+        error = "not connected";
+        return false;
+    }
+    nlohmann::json params    = job;
+    params["clientId"]       = m_client_id;
+    params["accessToken"]    = m_access_token;
+    params["devId"]          = printer.value("devId", std::string());
+    params["serialNumber"]   = printer.value("serialNumber", std::string());
+    params["devTopic"]       = printer.value("devTopic", std::string());
+    call("sendFile", params, error, 11 * 60);
     return error.empty();
 }
 

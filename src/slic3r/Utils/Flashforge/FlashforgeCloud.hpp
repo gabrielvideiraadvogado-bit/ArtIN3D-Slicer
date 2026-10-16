@@ -51,6 +51,12 @@ public:
     // action: "light" {on}, "camera" {open}, "loadFilament"/"unloadFilament" {slot}
     bool command(const std::string& dev_topic, const std::string& action, const nlohmann::json& args, std::string& error);
 
+    // Uploads a sliced file to the printer through the Flashforge cloud and creates the print
+    // job (started right away when job["printNow"]). job: filePath, thumbPath, dstName,
+    // printNow, leveling, timeLapse, useMatlStation, mappings[{toolId, slotId, materialName,
+    // toolColor, slotColor}]. Progress arrives as "sendProgress" events.
+    bool send_file(const nlohmann::json& printer, const nlohmann::json& job, std::string& error);
+
 private:
     FlashforgeCloud() = default;
     ~FlashforgeCloud();
@@ -60,7 +66,7 @@ private:
     bool           start_bridge(std::string& error);
     void           stop_bridge();
     void           read_loop(void* stream);
-    nlohmann::json call(const std::string& method, const nlohmann::json& params, std::string& error);
+    nlohmann::json call(const std::string& method, const nlohmann::json& params, std::string& error, int timeout_s = 60);
     bool           ensure_session(std::string& error);
     void           load_session();
     void           save_session();

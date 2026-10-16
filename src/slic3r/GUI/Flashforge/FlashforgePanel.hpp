@@ -34,6 +34,8 @@ private:
     void connect_realtime(const nlohmann::json& printers);
     void on_cloud_event(const nlohmann::json& event);
     void run_command(const std::string& dev_id, const std::string& action, const nlohmann::json& args);
+    void pick_file(const std::string& dev_id);
+    void send_file(const std::string& dev_id, const nlohmann::json& options);
 
     wxWebView*        m_browser{nullptr};
     wxTimer           m_refresh_timer;
@@ -42,6 +44,9 @@ private:
     bool              m_realtime{false};
     // devId -> MQTT topic of each printer of the account, from the last list.
     std::map<std::string, std::string> m_dev_topics;
+    nlohmann::json                     m_printers = nlohmann::json::array();
+    // devId -> sliced file chosen to send, with its extracted thumbnail.
+    std::map<std::string, nlohmann::json> m_pending_files;
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
 };
 

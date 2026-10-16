@@ -371,7 +371,7 @@ else ()
         # always built for x86_64 and started under Rosetta (FlashforgeCloud.cpp).
         add_executable(artin3d-ffbridge artin3d_ffbridge/ffbridge.cpp)
         set_target_properties(artin3d-ffbridge PROPERTIES OSX_ARCHITECTURES x86_64)
-        target_include_directories(artin3d-ffbridge PRIVATE "${CMAKE_SOURCE_DIR}/deps_src")
+        target_include_directories(artin3d-ffbridge SYSTEM PRIVATE "${CMAKE_SOURCE_DIR}/deps_src")
         add_dependencies(OrcaSlicer artin3d-ffbridge)
         add_custom_command(TARGET OrcaSlicer POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:artin3d-ffbridge>" "${BIN_DIR}/artin3d-ffbridge"

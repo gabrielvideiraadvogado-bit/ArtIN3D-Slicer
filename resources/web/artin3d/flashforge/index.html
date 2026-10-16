@@ -42,6 +42,13 @@
   .camera { margin-top: 12px; display: none; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; }
   .camera video, .camera img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .camera .wait { color: #ccc; padding: 20px; font-size: 12px; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
+  .dialog { background: var(--card); border-radius: 12px; padding: 20px; width: min(520px, 92vw); max-height: 90vh; overflow: auto; }
+  .dialog h3 { margin: 0 0 4px; font-size: 15px; }
+  .maprow { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
+  .maprow .dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
+  .maprow select { flex: 1; font: inherit; padding: 4px; }
+  .opts label { display: block; margin-top: 8px; }
   .live { font-size: 12px; } .live.on::before { content: '●'; color: var(--ok); margin-right: 4px; } .live.off::before { content: '●'; color: var(--muted); margin-right: 4px; }
 </style>
 <script src="lib/flv.min.js"></script>
@@ -143,6 +150,7 @@
       `<div class="actions">` +
       `<button data-act="light" data-dev="${dev}" data-on="${lightOn ? 0 : 1}" id="light-${dev}">${lightOn ? 'Apagar luz' : 'Acender luz'}</button>` +
       (d.camera === 2 ? '' : `<button data-act="camera" data-dev="${dev}" id="cambtn-${dev}">Ver câmera</button>`) +
+      `<button data-act="pickFile" data-dev="${dev}">Enviar arquivo…</button>` +
       `</div><div class="camera" id="cam-${dev}"><div class="wait">Abrindo a câmera…</div></div>` +
       `<div class="footer"><span class="muted" id="msg-${dev}"></span></div></div>`;
   }
@@ -204,7 +212,7 @@
     }
   }
 
-  document.addEventListener('click', (ev) => {
+  document.addEventListener('click', async (ev) => {
     const b = ev.target.closest('button[data-act]');
     if (!b) return;
     const dev = b.dataset.dev, act = b.dataset.act;
@@ -219,9 +227,10 @@
       if (url) startCamera(dev, url);
       return;
     }
+    if (act === 'pickFile') { post('pickFile', { devId: dev }); return; }
     if (act === 'loadFilament' || act === 'unloadFilament') {
       const verb = act === 'loadFilament' ? 'carregar o filamento da posição' : 'descarregar o filamento da posição';
-      if (!window.confirm(`Confirma ${verb} ${b.dataset.slot} na ${printer.name || 'impressora'}? A impressora vai aquecer o bico.`)) return;
+      if (!(await confirmBox(`Confirma ${verb} ${b.dataset.slot} na ${printer.name || 'impressora'}? A impressora vai aquecer o bico.`))) return;
       busy[dev] = act; b.disabled = true;
       post(act, { devId: dev, slot: Number(b.dataset.slot) });
     } else if (act === 'light') {
@@ -231,6 +240,67 @@
     const msg = document.getElementById('msg-' + dev);
     if (msg) msg.textContent = 'Enviando comando…';
   });
+
+  // Confirmations are drawn on the page: not every embedded web view implements window.confirm.
+  function confirmBox(text) {
+    return new Promise((resolve) => {
+      const o = document.createElement('div');
+      o.className = 'overlay';
+      o.style.zIndex = 10;
+      o.innerHTML = `<div class="dialog"><div>${esc(text)}</div><div class="actions" style="justify-content:flex-end">` +
+        `<button data-r="0">Cancelar</button><button class="primary" data-r="1">Confirmar</button></div></div>`;
+      o.addEventListener('click', (e) => {
+        const b = e.target.closest('button[data-r]');
+        if (!b) return;
+        o.remove();
+        resolve(b.dataset.r === '1');
+      });
+      document.body.appendChild(o);
+    });
+  }
+
+  function closeDialog() { const o = document.getElementById('send-dialog'); if (o) o.remove(); }
+
+  function showSendDialog(setup) {
+    closeDialog();
+    const p = printers.find((x) => x.devId === setup.devId) || {};
+    const slots = ((p.detail && p.detail.matlStation && p.detail.matlStation.slots) || []).filter((s) => s.hasFilament);
+    const norm = (c) => String(c || '').replace('#', '').toUpperCase();
+    // Preselect the slot with the same colour, otherwise the same position.
+    const guess = (t, i) => (slots.find((s) => norm(s.color) === norm(t.color)) || slots[i] || slots[0] || {}).slotId;
+    const rows = setup.tools.map((t, i) => `<div class="maprow"><span class="dot" style="background:${color(t.color)}"></span>` +
+      `<span style="min-width:110px">Cor ${t.toolId + 1}: ${esc(t.type)}</span>` +
+      `<select data-tool="${t.toolId}" data-color="${esc(t.color)}">` +
+      slots.map((s) => `<option value="${s.slotId}" ${s.slotId === guess(t, i) ? 'selected' : ''}>Posição ${s.slotId}: ${esc(s.material)} ${esc(s.color)}</option>`).join('') +
+      `</select></div>`).join('');
+    const box = document.createElement('div');
+    box.className = 'overlay'; box.id = 'send-dialog';
+    box.innerHTML = `<div class="dialog"><h3>Enviar para ${esc(p.name || 'a impressora')}</h3><div class="muted">${esc(setup.fileName)}</div>` +
+      (slots.length ? `<div style="margin-top:12px"><b>Cores → posições do IFS</b>${rows}</div>`
+                    : '<div class="muted" style="margin-top:12px">Sem posições carregadas no IFS: o arquivo vai sem mapa de cores.</div>') +
+      `<div class="opts" style="margin-top:14px"><label><input type="checkbox" id="opt-print" checked> Iniciar a impressão assim que chegar</label>` +
+      `<label><input type="checkbox" id="opt-level"> Nivelar a mesa antes</label>` +
+      `<label><input type="checkbox" id="opt-tl"> Gravar timelapse</label></div>` +
+      `<div id="send-progress" class="muted" style="margin-top:12px"></div>` +
+      `<div class="actions" style="justify-content:flex-end"><button id="send-cancel">Cancelar</button><button class="primary" id="send-go">Enviar</button></div></div>`;
+    document.body.appendChild(box);
+    document.getElementById('send-cancel').onclick = closeDialog;
+    document.getElementById('send-go').onclick = async () => {
+      const mappings = [...box.querySelectorAll('select[data-tool]')].map((sel) => {
+        const slot = slots.find((s) => s.slotId === Number(sel.value)) || {};
+        return { toolId: Number(sel.dataset.tool), slotId: Number(sel.value), materialName: slot.material || '',
+                 toolColor: sel.dataset.color, slotColor: slot.color || '' };
+      });
+      const printNow = document.getElementById('opt-print').checked;
+      if (printNow && !(await confirmBox('A impressora vai começar a imprimir assim que o arquivo chegar. A mesa está livre?'))) return;
+      document.getElementById('send-go').disabled = true;
+      document.getElementById('send-cancel').disabled = true;
+      document.getElementById('send-progress').textContent = 'Enviando… 0%';
+      post('sendFile', { devId: setup.devId, mappings, printNow,
+                         leveling: document.getElementById('opt-level').checked,
+                         timeLapse: document.getElementById('opt-tl').checked });
+    };
+  }
 
   window.artin3dFlashforge = {
     receive(message) {
@@ -255,6 +325,21 @@
         $('live').hidden = !account.loggedIn;
         $('live').className = 'live muted ' + (message.data.connected ? 'on' : 'off');
         $('live').textContent = message.data.connected ? 'Tempo real ligado' : 'Tempo real desligado' + (message.data.error ? ': ' + message.data.error : '');
+      } else if (message.type === 'sendSetup') {
+        showSendDialog(message.data);
+      } else if (message.type === 'sendProgress') {
+        const el = document.getElementById('send-progress');
+        if (el) el.textContent = `Enviando… ${Math.round(message.data.progress * 100)}%`;
+      } else if (message.type === 'sendResult') {
+        const el = document.getElementById('send-progress');
+        if (message.data.error) {
+          if (el) { el.textContent = 'Falhou: ' + message.data.error; document.getElementById('send-cancel').disabled = false; }
+          else { const m = document.getElementById('msg-' + message.data.devId); if (m) m.textContent = 'Falhou: ' + message.data.error; }
+        } else {
+          closeDialog();
+          const m = document.getElementById('msg-' + message.data.devId);
+          if (m) m.textContent = 'Arquivo enviado.';
+        }
       } else if (message.type === 'commandResult') {
         const dev = message.data.devId;
         delete busy[dev];
