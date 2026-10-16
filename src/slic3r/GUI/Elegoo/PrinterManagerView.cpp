@@ -667,7 +667,7 @@ void PrinterManagerView::openPrinterTab(const std::string& printerId, bool saveS
 
 void PrinterManagerView::refreshUserInfo()
 {
-    lock_guard<mutex> lock(mUserInfoMutex);
+    std::lock_guard<std::mutex> lock(mUserInfoMutex);
     UserNetworkInfo userNetworkInfo = UserNetworkManager::getInstance()->getUserInfo();
     if (mIpc && mIsReady) {
     // Send refresh signal to navigation webview via IPC
@@ -1347,7 +1347,7 @@ IPCResult PrinterManagerView::browseCAFile()
 }
 IPCResult PrinterManagerView::handleReady()
 {
-    lock_guard<mutex> lock(mUserInfoMutex);
+    std::lock_guard<std::mutex> lock(mUserInfoMutex);
     mIsReady = true;
     // Send any pending user info with delay to ensure frontend is ready
     if(!mRefreshUserInfo.userId.empty() && mIpc) {

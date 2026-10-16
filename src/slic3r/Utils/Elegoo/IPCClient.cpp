@@ -327,7 +327,7 @@ void IPCClient::handleEvent(const nlohmann::json& eventJson)
 
     if (method == "user.userInfoChanged") {
         if (wxGetApp().mainframe && wxGetApp().mainframe->is_loaded()) {
-            auto evt = new wxCommandEvent(EVT_USER_INFO_UPDATED);
+            auto evt = new wxCommandEvent(GUI::EVT_USER_INFO_UPDATED);
             wxQueueEvent(wxGetApp().mainframe, evt);
             BOOST_LOG_TRIVIAL(info) << "IPCClient: sent EVT_USER_INFO_UPDATED event to mainframe";
         }

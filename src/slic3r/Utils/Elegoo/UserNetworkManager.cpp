@@ -561,7 +561,7 @@ void UserNetworkManager::notifyUserInfoUpdated()
     const LoginStatus loginStatus = mUserInfo.loginStatus;
     wxGetApp().CallAfter([userId, loginStatus]() {
         if (wxGetApp().mainframe && wxGetApp().mainframe->is_loaded()) {
-            auto evt = new wxCommandEvent(EVT_USER_INFO_UPDATED);
+            auto evt = new wxCommandEvent(GUI::EVT_USER_INFO_UPDATED);
             wxQueueEvent(wxGetApp().mainframe, evt);
             BOOST_LOG_TRIVIAL(info) << "UserNetworkManager::notifyUserInfoUpdated"
                                     << boost::format(": user info updated, send event to mainframe, user id: %s, login status: %d") %

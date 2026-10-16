@@ -1,5 +1,6 @@
 #include "ElegooDialog.hpp"
 
+#include "slic3r/GUI/GUI.hpp"
 #include "slic3r/GUI/GUI_App.hpp"
 #include "slic3r/GUI/I18N.hpp"
 #include "libslic3r/AppConfig.hpp"
