@@ -239,7 +239,29 @@ function verify_python_runtime() {
     fi
 }
 
+# ArtIN3D: the Elegoo printer pages (LAN and cloud) that elegoolink serves locally. They come
+# from Elegoo's elegoo-fdm-web releases, which declare no license, so they are fetched at
+# build time as ElegooSlicer does (scripts/download_web_dep.sh there), not kept in the repo.
+function fetch_elegoo_printer_web() {
+    local release="https://github.com/ELEGOO-3D/elegoo-fdm-web/releases/download/20260625"
+    local web_dir="$PROJECT_DIR/resources/plugins/elegoolink/web"
+    for name in lan_service_web cloud_service_web; do
+        if [ -f "$web_dir/$name/index.html" ]; then
+            continue
+        fi
+        echo "Downloading Elegoo printer page $name..."
+        local zip
+        zip=$(mktemp -t "$name")
+        curl -fsSL -o "$zip" "$release/$name.zip"
+        rm -rf "${web_dir:?}/$name"
+        mkdir -p "$web_dir/$name"
+        unzip -q "$zip" -d "$web_dir/$name"
+        rm -f "$zip"
+    done
+}
+
 function build_slicer() {
+    fetch_elegoo_printer_web
     # iterate over two architectures: x86_64 and arm64
     for _ARCH in x86_64 arm64; do
         # if ARCH is universal or equal to _ARCH

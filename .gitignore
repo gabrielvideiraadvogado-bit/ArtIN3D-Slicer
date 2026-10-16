@@ -55,3 +55,6 @@ __pycache__/
 /.test/
 docs/superpowers/
 ctest_results.xml
+
+# ArtIN3D: Elegoo printer pages fetched at build time (build_release_macos.sh)
+resources/plugins/elegoolink/

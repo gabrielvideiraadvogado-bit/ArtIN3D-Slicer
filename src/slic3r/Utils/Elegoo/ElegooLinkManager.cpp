@@ -4,6 +4,8 @@
 #include "libslic3r/PrinterNetworkInfo.hpp"
 #include "elegoolink/elegoo_link.h"
 #include "libslic3r/Utils.hpp"
+#include <cstdlib>
+#include <mutex>
 #include <thread>
 #include <boost/log/trivial.hpp>
 #include <boost/format.hpp>
@@ -268,6 +270,12 @@ void ElegooLinkManager::init(const std::string& region, std::string& iotUrl, con
     if (!elink::ElegooLink::getInstance().initialize(cfg)) {
         BOOST_LOG_TRIVIAL(error) << __FUNCTION__ << ": error initializing ElegooLinkManager";
     }
+    // ArtIN3D: when the app exits without MainFrame::shutdown (e.g. after an uncaught
+    // exception), ElegooLink's own static destructor would clean up after the LAN service
+    // singleton it uses is already gone, and crash. An atexit handler registered now runs
+    // before those destructors; cleanup() does nothing when already cleaned up.
+    static std::once_flag s_cleanup_at_exit;
+    std::call_once(s_cleanup_at_exit, []() { std::atexit([]() { elink::ElegooLink::getInstance().cleanup(); }); });
     // elink::SetRegionParams setRegionParams;
     // setRegionParams.region = region;
     // setRegionParams.baseUrl = iotUrl;
