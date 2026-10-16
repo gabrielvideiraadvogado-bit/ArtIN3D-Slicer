@@ -55,6 +55,11 @@ if (MSVC)
 endif ()
 
 target_link_libraries(${_TEST_NAME}_tests test_common libslic3r_gui libslic3r pybind11::embed Catch2::Catch2WithMain)
+if (APPLE)
+    # ArtIN3D: libslic3r_gui links the Agora frameworks of the Elegoo connection; the app
+    # bundles them, the tests load them from the deps install dir.
+    target_link_options(${_TEST_NAME}_tests PRIVATE "LINKER:-rpath,${CMAKE_PREFIX_PATH}/bin")
+endif ()
 set_property(TARGET ${_TEST_NAME}_tests PROPERTY FOLDER "tests")
 
 orcaslicer_copy_test_dlls(${_TEST_NAME}_tests)
