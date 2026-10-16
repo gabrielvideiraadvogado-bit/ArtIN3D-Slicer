@@ -12,6 +12,7 @@
 #include <wx/string.h>
 
 #include <libslic3r/enum_bitmask.hpp>
+#include <libslic3r/PrintConfig.hpp>
 #include "Http.hpp"
 #include <map>
 class wxArrayString;
