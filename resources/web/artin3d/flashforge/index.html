@@ -184,7 +184,7 @@
 
   function stopCamera(dev) {
     const cam = cameras[dev];
-    if (cam) clearTimeout(cam.retry);
+    if (cam) { clearTimeout(cam.retry); clearInterval(cam.watch); }
     if (cam && cam.player) { try { cam.player.destroy(); } catch (e) {} }
     delete cameras[dev];
     const box = document.getElementById('cam-' + dev);
@@ -201,21 +201,26 @@
   }
 
   // The cloud stream only exists a few seconds after the "open" command reaches the
-  // printer, so failed attempts are retried. Cloud HLS URLs also serve FLV at the same
-  // path, which has seconds instead of tens of seconds of delay: try it first.
+  // printer, so failed or stalled attempts are retried. Cloud HLS URLs also serve FLV at
+  // the same path. The app's WebKit view plays HLS natively but not flv.js (its media
+  // source stalls without an error), so native HLS goes first where the engine has it.
   function playCamera(dev) {
     const box = document.getElementById('cam-' + dev);
     const cam = cameras[dev];
     if (!box || !cam || !cam.url) return;
     if (cam.player) { try { cam.player.destroy(); } catch (e) {} cam.player = null; }
-    clearTimeout(cam.retry);
+    clearTimeout(cam.retry); clearInterval(cam.watch);
     box.style.display = 'block';
     const url = cam.url, hls = /\.m3u8(\?|$|\/|#)/i.test(url);
-    const sources = hls ? [{ type: 'flv', url: url.replace(/\.m3u8/i, '.flv') }, { type: 'hls', url }]
+    const nativeHls = !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
+    const flvSource = { type: 'flv', url: url.replace(/\.m3u8/i, '.flv') }, hlsSource = { type: 'hls', url };
+    const sources = hls ? (nativeHls ? [hlsSource, flvSource] : [flvSource, hlsSource])
       : /\.flv(\?|$|\/|#)/i.test(url) ? [{ type: 'flv', url }] : [{ type: 'img', url }];
     const src = sources[cam.tries % sources.length];
     const failed = () => {
       if (cameras[dev] !== cam || cam.url !== url) return;
+      clearInterval(cam.watch);
+      if (cam.player) { try { cam.player.destroy(); } catch (e) {} cam.player = null; }
       if (++cam.tries > 20) { box.innerHTML = '<div class="wait">Não foi possível abrir o vídeo da câmera.</div>'; return; }
       box.innerHTML = '<div class="wait">Aguardando o vídeo da impressora…</div>';
       cam.retry = setTimeout(() => playCamera(dev), 3000);
@@ -223,7 +228,17 @@
     if (src.type === 'img') { box.innerHTML = `<img alt="Câmera" src="${esc(src.url)}">`; return; }
     box.innerHTML = '<video muted autoplay playsinline></video>';
     const video = box.firstChild;
-    if (src.type === 'flv' && window.flvjs && flvjs.isSupported()) {
+    // A player that shows nothing for 15 s counts as failed; once playing, 20 s frozen does.
+    let last = -1, still = 0;
+    cam.watch = setInterval(() => {
+      if (video.currentTime !== last) { last = video.currentTime; still = 0; return; }
+      still += 5;
+      if (still >= (last > 0 ? 20 : 15)) failed();
+    }, 5000);
+    if (src.type === 'hls' && nativeHls) {
+      video.onerror = failed; video.src = src.url;
+      const p = video.play(); if (p && p.catch) p.catch(() => {});
+    } else if (src.type === 'flv' && window.flvjs && flvjs.isSupported()) {
       cam.player = flvjs.createPlayer({ type: 'flv', isLive: true, url: src.url }, { enableStashBuffer: false });
       cam.player.on(flvjs.Events.ERROR, failed);
       cam.player.attachMediaElement(video); cam.player.load();
