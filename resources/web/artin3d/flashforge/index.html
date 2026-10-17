@@ -5,63 +5,127 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flashforge</title>
 <style>
+  /* ArtIN3D colours, from the logo: orange, blue and graphite. */
   :root {
-    --bg: #f6f6f8; --card: #ffffff; --text: #1d1d1f; --muted: #6e6e73; --line: #e2e2e7;
-    --accent: #f07a1e; --accent2: #3b8fd0; --ok: #2e9e5b; --warn: #d9822b; --err: #d64545;
+    --orange: #f07a22; --orange-dark: #d8641a; --blue: #3b8fd6; --graphite: #1e2024;
+    --bg: #f2f3f5; --card: #ffffff; --text: #1b1c1f; --muted: #6b7079; --line: #e3e5ea; --soft: #f6f7f9;
+    --ok: #2e9e5b; --warn: #e0912f; --err: #d64545;
+    --flange: #e4e7ec; --flange-line: #b6bcc6;
   }
   @media (prefers-color-scheme: dark) {
-    :root { --bg: #1f1f22; --card: #2b2b2f; --text: #f2f2f5; --muted: #a1a1a8; --line: #3a3a40; }
+    :root { --bg: #141518; --card: #1f2125; --text: #eef0f3; --muted: #9aa0aa; --line: #30333a; --soft: #26292e;
+            --flange: #3a3e45; --flange-line: #5d636c; }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; font: 14px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
-  header { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--line); }
-  header h1 { font-size: 16px; margin: 0; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 12px 20px;
+           background: var(--graphite); color: #f2f3f5; border-bottom: 3px solid var(--orange); }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand svg { width: 36px; height: 36px; flex: none; }
+  .brand h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  .brand h1 .art { color: var(--orange); } .brand h1 .in3d { color: #f2f3f5; } .brand h1 small { color: #9aa0aa; font-weight: 500; margin-left: 6px; font-size: 13px; }
+  .brand .sub { font-size: 12px; color: #b9bec7; }
+  header .side { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: flex-end; }
+  header .who { text-align: right; font-size: 12px; color: #c9cdd4; }
   .muted { color: var(--muted); }
-  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px; padding: 6px 14px; cursor: pointer; }
-  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
-  button:disabled { opacity: .5; cursor: default; }
-  main { padding: 20px; display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px; }
-  .empty { grid-column: 1 / -1; text-align: center; padding: 60px 20px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
-  .card h2 { font-size: 15px; margin: 0 0 2px; }
-  .status { display: inline-block; margin-top: 6px; padding: 2px 10px; border-radius: 999px; font-size: 12px; color: #fff; background: var(--muted); }
-  .status.ready { background: var(--ok); } .status.printing { background: var(--accent2); } .status.error { background: var(--err); }
-  .status.busy, .status.heating, .status.pause, .status.pausing { background: var(--warn); }
-  .row { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
-  .metric { min-width: 90px; } .metric b { display: block; font-size: 16px; }
-  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin-top: 6px; }
-  .progress > div { height: 100%; background: var(--accent2); }
-  .slots { display: flex; gap: 10px; margin-top: 12px; }
-  .slot { flex: 1; text-align: center; font-size: 12px; }
-  .swatch { width: 100%; height: 28px; border-radius: 6px; border: 1px solid var(--line); margin-bottom: 4px; }
-  .swatch.emptyslot { background: repeating-linear-gradient(45deg, transparent, transparent 4px, var(--line) 4px, var(--line) 8px); }
-  .error-box { grid-column: 1 / -1; background: #fdecec; color: #8a1f1f; border-radius: 8px; padding: 10px 14px; }
-  .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; font-size: 12px; }
-  .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
-  .slot button { margin-top: 4px; padding: 2px 8px; font-size: 11px; }
-  .camera { margin-top: 12px; display: none; background: #000; border-radius: 8px; overflow: hidden; aspect-ratio: 16 / 9; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 8px;
+           padding: 7px 14px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; }
+  button:hover:not(:disabled) { border-color: var(--orange); }
+  button.primary { background: var(--orange); border-color: var(--orange); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: var(--orange-dark); border-color: var(--orange-dark); }
+  header button { background: transparent; color: #f2f3f5; border-color: #4a4e56; }
+  header button.primary { background: var(--orange); border-color: var(--orange); }
+  button:disabled { opacity: .45; cursor: default; }
+  button svg { width: 16px; height: 16px; }
+  main { padding: 20px; display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 18px; max-width: 1180px; margin: 0 auto; }
+  @media (max-width: 640px) { main { grid-template-columns: 1fr; padding: 12px; } }
+  .empty { grid-column: 1 / -1; text-align: center; padding: 70px 20px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  .card-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 16px; }
+  @media (max-width: 900px) { .card-grid { grid-template-columns: 1fr; } }
+  .camera { position: relative; background: #0d0e10; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3; }
   .camera video, .camera img { width: 100%; height: 100%; object-fit: contain; display: block; }
-  .camera .wait { color: #ccc; padding: 20px; font-size: 12px; }
-  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.45); display: flex; align-items: center; justify-content: center; }
-  .dialog { background: var(--card); border-radius: 12px; padding: 20px; width: min(520px, 92vw); max-height: 90vh; overflow: auto; }
-  .dialog h3 { margin: 0 0 4px; font-size: 15px; }
+  .camera .wait, .cam-ph { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+                           gap: 8px; color: #8d939c; font-size: 12px; text-align: center; padding: 16px; }
+  .cam-ph svg { width: 40px; height: 40px; opacity: .6; }
+  .cam-bar { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+  .cam-bar button { flex: 1; justify-content: center; }
+  button.on { background: rgba(240,122,34,.12); border-color: var(--orange); color: var(--orange); }
+  .head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .head h2 { font-size: 17px; margin: 0; }
+  .status { display: inline-block; padding: 3px 11px; border-radius: 999px; font-size: 12px; font-weight: 600; color: #fff; background: var(--muted); white-space: nowrap; }
+  .status.ready, .status.completed { background: var(--ok); } .status.printing { background: var(--blue); } .status.error { background: var(--err); }
+  .status.busy, .status.heating, .status.pause, .status.pausing, .status.calibrate_doing { background: var(--warn); }
+  .temps { display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr)); gap: 8px; margin-top: 14px; }
+  .tile { background: var(--soft); border-radius: 10px; padding: 9px 11px; }
+  .tile span { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+  .tile span svg { width: 13px; height: 13px; }
+  .tile b { display: block; font-size: 17px; margin-top: 3px; }
+  .job { margin-top: 14px; background: var(--soft); border-radius: 10px; padding: 11px 12px; }
+  .job .file { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .job .pct { font-size: 22px; font-weight: 700; }
+  .progress { height: 8px; background: var(--line); border-radius: 4px; overflow: hidden; margin: 6px 0; }
+  .progress > div { height: 100%; background: linear-gradient(90deg, var(--orange), var(--blue)); }
+  .ifs { border-top: 1px solid var(--line); padding: 14px 16px 16px; }
+  .ifs h3 { font-size: 13px; margin: 0 0 10px; display: flex; justify-content: space-between; align-items: baseline; }
+  .spools { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .spool-tile { position: relative; background: var(--soft); border: 2px solid transparent; border-radius: 12px; padding: 10px 8px; text-align: center; }
+  .spool-tile.loaded { border-color: var(--orange); }
+  .spool-tile .no { position: absolute; top: 8px; left: 8px; width: 20px; height: 20px; border-radius: 50%; background: var(--graphite);
+                    color: #fff; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .spool-tile .badge { position: absolute; top: 8px; right: 8px; background: var(--orange); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 6px; }
+  .spool { width: 92px; height: 100px; display: block; margin: 6px auto 4px; }
+  .spool .flange { fill: var(--flange); stroke: var(--flange-line); stroke-width: 2; }
+  .spool .hole { fill: var(--flange-line); }
+  .spool-tile.vacant .spool .flange { fill: none; stroke-dasharray: 5 4; }
+  .spool-tile .mat { font-weight: 600; font-size: 13px; }
+  .spool-tile .hex { font-size: 11px; color: var(--muted); }
+  .spool-tile button { margin-top: 8px; width: 100%; justify-content: center; padding: 5px 6px; font-size: 12px; }
+  .spool-tile button.load { border-color: var(--orange); color: var(--orange); }
+  .card-foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--soft); }
+  .card-foot .msg { font-size: 12px; color: var(--muted); }
+  .error-box { grid-column: 1 / -1; background: #fdecec; color: #8a1f1f; border-radius: 8px; padding: 10px 14px; }
+  .actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+  .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; }
+  .dialog { background: var(--card); border-radius: 14px; padding: 20px; width: min(540px, 92vw); max-height: 90vh; overflow: auto; border-top: 4px solid var(--orange); }
+  .dialog h3 { margin: 0 0 4px; font-size: 16px; }
+  .dialog select { font: inherit; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--text); }
   .maprow { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-  .maprow .dot { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
-  .maprow select { flex: 1; font: inherit; padding: 4px; }
-  .opts label { display: block; margin-top: 8px; }
-  .live { font-size: 12px; } .live.on::before { content: '●'; color: var(--ok); margin-right: 4px; } .live.off::before { content: '●'; color: var(--muted); margin-right: 4px; }
+  .maprow .dot { width: 24px; height: 24px; border-radius: 50%; border: 1px solid var(--line); flex: none; }
+  .maprow select { flex: 1; }
+  .opts label { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+  .opts input { accent-color: var(--orange); }
+  .live { font-size: 12px; } .live.on::before { content: '●'; color: #4cd07d; margin-right: 4px; } .live.off::before { content: '●'; color: #7d828b; margin-right: 4px; }
 </style>
 <script src="lib/flv.min.js"></script>
 <script src="lib/hls.min.js"></script>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="spool-shade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fff" stop-opacity=".45"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/>
+      <stop offset="1" stop-color="#000" stop-opacity=".28"/>
+    </linearGradient>
+  </defs>
+</svg>
 <header>
-  <div>
-    <h1>Impressoras Flashforge</h1>
-    <div id="account" class="muted">Carregando…</div>
-    <div id="live" class="live off muted" hidden>Tempo real desligado</div>
+  <div class="brand">
+    <svg viewBox="0 0 40 40" aria-hidden="true">
+      <polygon points="20,3 36,12 20,21 4,12" fill="#f07a22"/>
+      <polygon points="4,12 20,21 20,38 4,29" fill="#d8641a"/>
+      <polygon points="36,12 20,21 20,38 36,29" fill="#3b8fd6"/>
+      <polyline points="10,15 16,18.5 16,26" fill="none" stroke="#1e2024" stroke-width="2"/>
+      <polyline points="30,15 24,18.5 24,26" fill="none" stroke="#1e2024" stroke-width="2"/>
+    </svg>
+    <div>
+      <h1><span class="art">Art</span><span class="in3d">IN3D</span><small>Impressoras Flashforge</small></h1>
+      <div id="live" class="live off sub" hidden>Tempo real desligado</div>
+    </div>
   </div>
-  <div>
+  <div class="side">
+    <div id="account" class="who">Carregando…</div>
     <button id="refresh" hidden>Atualizar</button>
     <button id="login" class="primary" hidden>Entrar com a conta Flashforge</button>
     <button id="logout" hidden>Sair</button>
@@ -104,55 +168,95 @@
     }
   }
 
+  const ICON = {
+    nozzle: '<svg viewBox="0 0 16 16"><path d="M5 1h6v4H5zM4 5h8l-2 5H6zM7 10h2l-1 4z" fill="currentColor"/></svg>',
+    bed: '<svg viewBox="0 0 16 16"><rect x="1" y="9" width="14" height="3" rx="1" fill="currentColor"/><path d="M4 7c0-2 2-2 2-4M8 7c0-2 2-2 2-4M12 7c0-2 2-2 2-4" stroke="currentColor" fill="none" stroke-width="1.3"/></svg>',
+    chamber: '<svg viewBox="0 0 16 16"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" fill="none" stroke-width="1.5"/><path d="M5 11h6" stroke="currentColor" stroke-width="1.5"/></svg>',
+    bulb: '<svg viewBox="0 0 16 16"><path d="M8 1a5 5 0 0 0-3 9v2h6v-2a5 5 0 0 0-3-9zM6 13h4v2H6z" fill="currentColor"/></svg>',
+    cam: '<svg viewBox="0 0 24 24"><path d="M4 7h11v10H4zM15 10l5-3v10l-5-3z" fill="currentColor"/></svg>',
+    send: '<svg viewBox="0 0 16 16"><path d="M8 1l5 5h-3v5H6V6H3zM2 13h12v2H2z" fill="currentColor"/></svg>'
+  };
+  const IDLE = ['ready', 'completed', 'cancel'];
+
+  // A spool seen from the side, as in Flash Studio: the filament wound between two flanges.
+  function spool(s) {
+    const c = s.hasFilament ? color(s.color) : null;
+    const winds = c ? [20, 28, 36, 44, 52, 60, 68, 76, 84, 92].map((y) => `<line x1="26" x2="74" y1="${y}" y2="${y}" stroke="rgba(0,0,0,.10)"/>`).join('') : '';
+    const body = c ? `<rect x="26" y="12" width="48" height="86" fill="${c}" stroke="rgba(0,0,0,.18)"/>` +
+      `<rect x="26" y="12" width="48" height="86" fill="url(#spool-shade)"/>${winds}` : '';
+    return `<svg class="spool" viewBox="0 0 100 110" aria-hidden="true">` +
+      `<ellipse class="flange" cx="74" cy="55" rx="15" ry="51"/>${body}` +
+      `<ellipse class="flange" cx="26" cy="55" rx="15" ry="51"/><ellipse class="hole" cx="26" cy="55" rx="4.5" ry="14"/></svg>`;
+  }
+
   function info(printer) {
     const d = printer.detail || {};
     const status = d.status || printer.status || 'offline';
-    let html = `<h2>${esc(printer.name)}</h2><div class="muted">${esc(printer.model)}</div>`;
-    html += `<span class="status ${esc(status)}">${esc(STATUS[status] || status)}</span>`;
+    let html = `<div class="head"><div><h2>${esc(printer.name)}</h2><div class="muted">${esc(printer.model)}</div></div>` +
+      `<span class="status ${esc(status)}">${esc(STATUS[status] || status)}</span></div>`;
     if (printer.detailError && !printer.detail) {
-      return html + `<div class="muted" style="margin-top:10px">Sem detalhes agora: ${esc(printer.detailError)}</div>`;
+      return html + `<div class="muted" style="margin-top:12px">Sem detalhes agora: ${esc(printer.detailError)}</div>`;
     }
-    html += '<div class="row">' +
-      `<div class="metric"><span class="muted">Bico</span><b>${temp(d.nozzleTemp, d.nozzleTargetTemp)}</b></div>` +
-      `<div class="metric"><span class="muted">Mesa</span><b>${temp(d.bedTemp, d.bedTargetTemp)}</b></div>` +
-      (d.chamberTemp ? `<div class="metric"><span class="muted">Câmara</span><b>${temp(d.chamberTemp)}</b></div>` : '') +
-      `<div class="metric"><span class="muted">Luz</span><b>${d.lightStatus === 'open' ? 'Acesa' : d.lightStatus === 'close' ? 'Apagada' : '–'}</b></div>` +
+    html += '<div class="temps">' +
+      `<div class="tile"><span>${ICON.nozzle}Bico</span><b>${temp(d.nozzleTemp, d.nozzleTargetTemp)}</b></div>` +
+      `<div class="tile"><span>${ICON.bed}Mesa</span><b>${temp(d.bedTemp, d.bedTargetTemp)}</b></div>` +
+      (d.chamberTemp ? `<div class="tile"><span>${ICON.chamber}Câmara</span><b>${temp(d.chamberTemp)}</b></div>` : '') +
       '</div>';
     if (d.printFileName && ['printing', 'pausing', 'pause', 'heating', 'busy'].includes(status)) {
       const pct = Math.round((d.printProgress || 0) * 100);
-      const left = d.estimatedTime ? ` · faltam ${duration(d.estimatedTime)}` : '';
-      html += `<div style="margin-top:12px"><span class="muted">${esc(d.printFileName)}</span>` +
-        `<div class="progress"><div style="width:${pct}%"></div></div>` +
-        `<span class="muted">${pct}% · camada ${d.printLayer || 0}/${d.targetPrintLayer || 0}${left}</span></div>`;
-    }
-    const slots = (d.matlStation && d.matlStation.slots) || [];
-    const idle = status === 'ready' || status === 'completed' || status === 'cancel';
-    const dev = esc(printer.devId);
-    if (slots.length) {
-      const loaded = d.matlStation.currentLoadSlot;
-      html += '<div class="slots">' + slots.map((s) => {
-        const isLoaded = s.slotId === loaded;
-        const btn = !s.hasFilament ? '' : isLoaded
-          ? `<button data-act="unloadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${idle && !busy[printer.devId] ? '' : 'disabled'}>Descarregar</button>`
-          : `<button data-act="loadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${idle && !busy[printer.devId] ? '' : 'disabled'}>Carregar</button>`;
-        return `<div class="slot"><div class="swatch ${s.hasFilament ? '' : 'emptyslot'}" style="background-color:${s.hasFilament ? color(s.color) : ''}"></div>` +
-          `${esc(s.slotId)}: ${s.hasFilament ? esc(s.material || '?') : 'vazia'}${isLoaded ? ' (no bico)' : ''}<br>${btn}</div>`;
-      }).join('') + '</div>';
+      const left = d.estimatedTime ? `faltam ${duration(d.estimatedTime)}` : '';
+      html += `<div class="job"><div class="file">${esc(d.printFileName)}</div>` +
+        `<div class="pct">${pct}%</div><div class="progress"><div style="width:${pct}%"></div></div>` +
+        `<span class="muted">camada ${d.printLayer || 0} de ${d.targetPrintLayer || 0}${left ? ' · ' + left : ''}</span></div>`;
+    } else if (IDLE.includes(status)) {
+      html += '<div class="job muted">Pronta para imprimir. Use <b>Imprimir</b> no fatiador ou <b>Enviar arquivo</b> abaixo.</div>';
     }
     return html;
+  }
+
+  function ifs(printer) {
+    const d = printer.detail || {};
+    const slots = (d.matlStation && d.matlStation.slots) || [];
+    if (!slots.length) return '';
+    const status = d.status || printer.status || 'offline';
+    const can = IDLE.includes(status) && !busy[printer.devId];
+    const dev = esc(printer.devId);
+    const loaded = d.matlStation.currentLoadSlot;
+    return '<h3>Estação de filamentos (IFS)' +
+      (can ? '' : '<span class="muted" style="font-weight:400">carregar e descarregar só com a impressora parada</span>') + '</h3>' +
+      '<div class="spools">' + slots.map((s) => {
+        const isLoaded = s.slotId === loaded;
+        const btn = !s.hasFilament ? '' : isLoaded
+          ? `<button data-act="unloadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${can ? '' : 'disabled'}>Descarregar</button>`
+          : `<button class="load" data-act="loadFilament" data-dev="${dev}" data-slot="${s.slotId}" ${can ? '' : 'disabled'}>Carregar</button>`;
+        return `<div class="spool-tile${isLoaded ? ' loaded' : ''}${s.hasFilament ? '' : ' vacant'}">` +
+          `<div class="no">${esc(s.slotId)}</div>${isLoaded ? '<div class="badge">No bico</div>' : ''}${spool(s)}` +
+          `<div class="mat">${s.hasFilament ? esc(s.material || '?') : 'Vazia'}</div>` +
+          `<div class="hex">${s.hasFilament ? esc(color(s.color).toUpperCase()) : '&nbsp;'}</div>${btn}</div>`;
+      }).join('') + '</div>';
+  }
+
+  function cameraPlaceholder(printer) {
+    const none = printer.detail && printer.detail.camera === 2;
+    return `<div class="cam-ph">${ICON.cam}<span>${none ? 'Esta impressora não tem câmera.' : 'Câmera desligada'}</span></div>`;
+  }
+
+  function lightButton(dev, on) {
+    return `<button data-act="light" data-dev="${esc(dev)}" data-on="${on ? 0 : 1}" id="light-${esc(dev)}" class="${on ? 'on' : ''}">` +
+      `${ICON.bulb}${on ? 'Luz acesa' : 'Luz apagada'}</button>`;
   }
 
   function card(printer) {
     const dev = esc(printer.devId);
     const d = printer.detail || {};
-    const lightOn = d.lightStatus === 'open';
-    return `<div class="card" id="card-${dev}"><div id="info-${dev}">${info(printer)}</div>` +
-      `<div class="actions">` +
-      `<button data-act="light" data-dev="${dev}" data-on="${lightOn ? 0 : 1}" id="light-${dev}">${lightOn ? 'Apagar luz' : 'Acender luz'}</button>` +
-      (d.camera === 2 ? '' : `<button data-act="camera" data-dev="${dev}" id="cambtn-${dev}">Ver câmera</button>`) +
-      `<button data-act="pickFile" data-dev="${dev}">Enviar arquivo…</button>` +
-      `</div><div class="camera" id="cam-${dev}"><div class="wait">Abrindo a câmera…</div></div>` +
-      `<div class="footer"><span class="muted" id="msg-${dev}"></span></div></div>`;
+    return `<div class="card" id="card-${dev}"><div class="card-grid">` +
+      `<div><div class="camera" id="cam-${dev}">${cameraPlaceholder(printer)}</div><div class="cam-bar">` +
+      (d.camera === 2 ? '' : `<button data-act="camera" data-dev="${dev}" id="cambtn-${dev}">${ICON.cam}Ver câmera</button>`) +
+      `<span id="lightwrap-${dev}">${lightButton(printer.devId, d.lightStatus === 'open')}</span></div></div>` +
+      `<div id="info-${dev}">${info(printer)}</div></div>` +
+      `<div class="ifs" id="ifs-${dev}">${ifs(printer)}</div>` +
+      `<div class="card-foot"><span class="msg" id="msg-${dev}"></span>` +
+      `<button class="primary" data-act="pickFile" data-dev="${dev}">${ICON.send}Enviar arquivo…</button></div></div>`;
   }
 
   function updateCard(printer) {
@@ -160,12 +264,11 @@
     const infoEl = document.getElementById('info-' + dev);
     if (!infoEl) return renderPrinters();
     infoEl.innerHTML = info(printer);
+    const ifsEl = document.getElementById('ifs-' + dev);
+    if (ifsEl) ifsEl.innerHTML = ifs(printer);
     const d = printer.detail || {};
-    const light = document.getElementById('light-' + dev);
-    if (light && !busy[dev]) {
-      light.textContent = d.lightStatus === 'open' ? 'Apagar luz' : 'Acender luz';
-      light.dataset.on = d.lightStatus === 'open' ? 0 : 1;
-    }
+    const wrap = document.getElementById('lightwrap-' + dev);
+    if (wrap && !busy[dev]) wrap.innerHTML = lightButton(dev, d.lightStatus === 'open');
     const cam = cameras[dev];
     if (cam && cam.open && d.cameraStreamUrl && d.cameraStreamUrl !== cam.url) startCamera(dev, d.cameraStreamUrl);
   }
@@ -177,7 +280,6 @@
     $('printers').innerHTML = html;
     for (const dev of Object.keys(cameras)) if (cameras[dev].open) {
       const url = cameras[dev].url; cameras[dev].url = null;
-      document.getElementById('cam-' + dev) && (document.getElementById('cam-' + dev).style.display = 'block');
       if (url) startCamera(dev, url);
     }
   }
@@ -188,9 +290,10 @@
     if (cam && cam.player) { try { cam.player.destroy(); } catch (e) {} }
     delete cameras[dev];
     const box = document.getElementById('cam-' + dev);
-    if (box) { box.style.display = 'none'; box.innerHTML = '<div class="wait">Abrindo a câmera…</div>'; }
+    const printer = printers.find((p) => p.devId === dev) || {};
+    if (box) box.innerHTML = cameraPlaceholder(printer);
     const btn = document.getElementById('cambtn-' + dev);
-    if (btn) btn.textContent = 'Ver câmera';
+    if (btn) { btn.innerHTML = ICON.cam + 'Ver câmera'; btn.classList.remove('on'); }
   }
 
   function startCamera(dev, url) {
@@ -210,8 +313,7 @@
     if (!box || !cam || !cam.url) return;
     if (cam.player) { try { cam.player.destroy(); } catch (e) {} cam.player = null; }
     clearTimeout(cam.retry); clearInterval(cam.watch);
-    box.style.display = 'block';
-    const url = cam.url, hls = /\.m3u8(\?|$|\/|#)/i.test(url);
+        const url = cam.url, hls = /\.m3u8(\?|$|\/|#)/i.test(url);
     const nativeHls = !!document.createElement('video').canPlayType('application/vnd.apple.mpegurl');
     const flvSource = { type: 'flv', url: url.replace(/\.m3u8/i, '.flv') }, hlsSource = { type: 'hls', url };
     const sources = hls ? (nativeHls ? [hlsSource, flvSource] : [flvSource, hlsSource])
@@ -262,8 +364,8 @@
     if (act === 'camera') {
       if (cameras[dev]) { stopCamera(dev); post('camera', { devId: dev, open: false }); return; }
       cameras[dev] = { open: true, url: null, player: null };
-      b.textContent = 'Fechar câmera';
-      document.getElementById('cam-' + dev).style.display = 'block';
+      b.innerHTML = ICON.cam + 'Fechar câmera'; b.classList.add('on');
+      document.getElementById('cam-' + dev).innerHTML = '<div class="wait">Abrindo a câmera…</div>';
       post('camera', { devId: dev, open: true });
       const url = printer.detail && printer.detail.cameraStreamUrl;
       if (url) startCamera(dev, url);
@@ -372,7 +474,7 @@
         if (p && message.type === 'offline') { p.detail = Object.assign({}, p.detail, { status: 'offline' }); updateCard(p); }
       } else if (message.type === 'connection') {
         $('live').hidden = !account.loggedIn;
-        $('live').className = 'live muted ' + (message.data.connected ? 'on' : 'off');
+        $('live').className = 'live sub ' + (message.data.connected ? 'on' : 'off');
         $('live').textContent = message.data.connected ? 'Tempo real ligado' : 'Tempo real desligado' + (message.data.error ? ': ' + message.data.error : '');
       } else if (message.type === 'sendSetup') {
         showSendDialog(message.data);
