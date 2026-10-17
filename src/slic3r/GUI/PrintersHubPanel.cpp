@@ -34,4 +34,12 @@ PrintersHubPanel::PrintersHubPanel(wxWindow* parent) : wxPanel(parent, wxID_ANY)
     SetSizer(sizer);
 }
 
+bool PrintersHubPanel::send_to_flashforge(const boost::filesystem::path& gcode, const std::string& dst_name, std::string& error)
+{
+    const int page = m_book->FindPage(m_flashforge);
+    if (page != wxNOT_FOUND && m_book->GetSelection() != page)
+        m_book->SetSelection(page);
+    return m_flashforge->offer_file(gcode, dst_name, error);
+}
+
 }} // namespace Slic3r::GUI

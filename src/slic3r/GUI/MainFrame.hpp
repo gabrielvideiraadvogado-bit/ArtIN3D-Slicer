@@ -432,6 +432,8 @@ public:
     //BBS: GUI refactor
     void        select_tab(wxPanel* panel);
     void        select_tab(const wxString& id = wxString());
+    // ArtIN3D: opens Printers > Flashforge with the send dialog for a sliced G-code file.
+    bool        send_to_flashforge_cloud(const std::string& gcode_path, const std::string& dst_name, std::string& error);
     void        request_select_tab(const wxString& id);
     // post_init() needs the plater's canvas on screen to initialize OpenGL; this pass does not
     // build the settings page.

@@ -7,6 +7,8 @@
 #include <nlohmann/json.hpp>
 #include <wx/dialog.h>
 #include <wx/panel.h>
+
+#include <boost/filesystem/path.hpp>
 #include <wx/timer.h>
 #include <wx/webview.h>
 
@@ -25,7 +27,13 @@ public:
 
     bool Show(bool show = true) override;
 
+    // Offers a file sliced in the plater for sending. Returns false, with the reason in
+    // error, when the file cannot be sent (no thumbnail, unreadable). Otherwise the send
+    // dialog opens once the account's printers are known.
+    bool offer_file(const boost::filesystem::path& gcode, const std::string& dst_name, std::string& error);
+
 private:
+    void deliver_offer();
     void on_script_message(wxWebViewEvent& event);
     void send_to_page(const std::string& type, const nlohmann::json& data);
     void send_account_state();
@@ -47,6 +55,8 @@ private:
     nlohmann::json                     m_printers = nlohmann::json::array();
     // devId -> sliced file chosen to send, with its extracted thumbnail.
     std::map<std::string, nlohmann::json> m_pending_files;
+    // File offered by the plater, kept until the printers are listed: {file, info}.
+    nlohmann::json m_offer;
     std::shared_ptr<bool> m_alive{std::make_shared<bool>(true)};
 };
 

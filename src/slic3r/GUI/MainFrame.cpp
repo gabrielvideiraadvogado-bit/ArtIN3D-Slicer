@@ -4291,6 +4291,17 @@ void MainFrame::jump_to_multipage()
 
 
 //BBS GUI refactor: remove unused layout new/dlg
+bool MainFrame::send_to_flashforge_cloud(const std::string& gcode_path, const std::string& dst_name, std::string& error)
+{
+    PrintersHubPanel* hub = m_printers_page != nullptr ? m_printers_page->ensure() : nullptr;
+    if (hub == nullptr) {
+        error = _u8L("The Printers tab is not available.");
+        return false;
+    }
+    select_tab(wxString(TAB_ID_PRINTERS));
+    return hub->send_to_flashforge(boost::filesystem::path(gcode_path), dst_name, error);
+}
+
 void MainFrame::select_tab(const wxString& id/* = wxString()*/)
 {
     //bool tabpanel_was_hidden = false;

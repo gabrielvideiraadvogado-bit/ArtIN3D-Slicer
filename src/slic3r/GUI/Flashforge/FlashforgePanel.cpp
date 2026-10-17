@@ -218,6 +218,7 @@ void FlashforgePanel::refresh_printers()
             if (error.empty()) {
                 m_printers = printers;
                 connect_realtime(printers);
+                deliver_offer();
             }
         });
     }).detach();
@@ -394,6 +395,44 @@ void FlashforgePanel::pick_file(const std::string& dev_id)
     }
     m_pending_files[dev_id] = {{"filePath", file.string()}, {"thumbPath", thumb.string()}, {"dstName", file.filename().string()}};
     info["devId"]           = dev_id;
+    send_to_page("sendSetup", info);
+}
+
+bool FlashforgePanel::offer_file(const boost::filesystem::path& gcode, const std::string& dst_name, std::string& error)
+{
+    const boost::filesystem::path thumb = boost::filesystem::temp_directory_path() /
+                                          boost::filesystem::unique_path("artin3d-ff-thumb-%%%%%%%%.png");
+    nlohmann::json info = inspect_gcode(gcode, thumb, error);
+    if (!error.empty())
+        return false;
+    info["fileName"] = dst_name;
+    m_offer = {{"file", {{"filePath", gcode.string()}, {"thumbPath", thumb.string()}, {"dstName", dst_name}}}, {"info", info}};
+    deliver_offer();
+    return true;
+}
+
+// Opens the send dialog for the offered file once the printers are listed (the page asks
+// to sign in first when needed). With several printers the dialog lets the user choose.
+void FlashforgePanel::deliver_offer()
+{
+    if (m_offer.is_null() || m_printers.empty() || !m_page_ready)
+        return;
+    nlohmann::json info    = m_offer["info"];
+    nlohmann::json choices = nlohmann::json::array();
+    std::string    first, online;
+    for (const nlohmann::json& p : m_printers) {
+        const std::string dev_id = p.value("devId", std::string());
+        m_pending_files[dev_id]  = m_offer["file"];
+        choices.push_back({{"devId", dev_id}, {"name", p.value("name", std::string())}});
+        if (first.empty())
+            first = dev_id;
+        if (online.empty() && p.value("status", std::string()) != "offline")
+            online = dev_id;
+    }
+    const std::string chosen = online.empty() ? first : online;
+    m_offer.clear();
+    info["devId"]   = chosen;
+    info["choices"] = choices;
     send_to_page("sendSetup", info);
 }
 

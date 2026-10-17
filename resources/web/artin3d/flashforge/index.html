@@ -317,7 +317,12 @@
       `</select></div>`).join('');
     const box = document.createElement('div');
     box.className = 'overlay'; box.id = 'send-dialog';
-    box.innerHTML = `<div class="dialog"><h3>Enviar para ${esc(p.name || 'a impressora')}</h3><div class="muted">${esc(setup.fileName)}</div>` +
+    // Sent from the slicer's Print button, the file may go to any printer of the account.
+    const choices = setup.choices || [];
+    const picker = choices.length > 1 ? `<div style="margin-top:8px"><select id="send-printer">` +
+      choices.map((c) => `<option value="${esc(c.devId)}" ${c.devId === setup.devId ? 'selected' : ''}>${esc(c.name || c.devId)}</option>`).join('') +
+      `</select></div>` : '';
+    box.innerHTML = `<div class="dialog"><h3>Enviar para ${esc(p.name || 'a impressora')}</h3><div class="muted">${esc(setup.fileName)}</div>` + picker +
       (slots.length ? `<div style="margin-top:12px"><b>Cores → posições do IFS</b>${rows}</div>`
                     : '<div class="muted" style="margin-top:12px">Sem posições carregadas no IFS: o arquivo vai sem mapa de cores.</div>') +
       `<div class="opts" style="margin-top:14px"><label><input type="checkbox" id="opt-print" checked> Iniciar a impressão assim que chegar</label>` +
@@ -327,6 +332,8 @@
       `<div class="actions" style="justify-content:flex-end"><button id="send-cancel">Cancelar</button><button class="primary" id="send-go">Enviar</button></div></div>`;
     document.body.appendChild(box);
     document.getElementById('send-cancel').onclick = closeDialog;
+    const pick = document.getElementById('send-printer');
+    if (pick) pick.onchange = () => showSendDialog(Object.assign({}, setup, { devId: pick.value }));
     document.getElementById('send-go').onclick = async () => {
       const mappings = [...box.querySelectorAll('select[data-tool]')].map((sel) => {
         const slot = slots.find((s) => s.slotId === Number(sel.value)) || {};

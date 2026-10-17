@@ -20927,6 +20927,19 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn)
         return;
     }
     default_output_file = fs::path(Slic3r::fold_utf8_to_ascii(default_output_file.string()));
+
+    // ArtIN3D: a Flashforge printer without a network address is reached through the
+    // Flashforge account (Printers > Flashforge), the way Flash Studio sends from anywhere.
+    {
+        const auto* model_opt = physical_printer_config->option<ConfigOptionString>("printer_model");
+        const auto* host_opt  = physical_printer_config->option<ConfigOptionString>("print_host");
+        if (model_opt != nullptr && boost::istarts_with(model_opt->value, "Flashforge") &&
+            (host_opt == nullptr || boost::trim_copy(host_opt->value).empty())) {
+            send_to_flashforge_cloud(resolved_plate_idx, default_output_file);
+            return;
+        }
+    }
+
     if (use_3mf) {
         // Orca: a gcode-in-3mf bundle is named ".gcode.3mf" (matching "Export plate sliced file")
         default_output_file.replace_extension(".gcode.3mf");
@@ -21094,6 +21107,31 @@ void Plater::send_gcode_legacy(int plate_idx, Export3mfProgressFn proFn)
 
     p->export_gcode(fs::path(), false, std::move(upload_job));
 }
+// ArtIN3D: hands the plate's sliced G-code to the Flashforge cloud send dialog. The file is
+// copied first so a new slice can't change it while it uploads.
+void Plater::send_to_flashforge_cloud(int plate_idx, const fs::path& default_output_file)
+{
+    PartPlate* plate = get_partplate_list().get_plate(plate_idx);
+    if (plate == nullptr || !plate->is_slice_result_ready_for_export()) {
+        show_error(this, _L("Slice the plate before sending it to the printer."), false);
+        return;
+    }
+    fs::path name = default_output_file.filename();
+    if (name.extension() != ".gcode")
+        name.replace_extension(".gcode");
+    std::string error;
+    try {
+        const fs::path dir = fs::temp_directory_path() / fs::unique_path("artin3d-ff-%%%%%%%%");
+        fs::create_directories(dir);
+        fs::copy_file(plate->get_tmp_gcode_path(), dir / name, fs::copy_options::overwrite_existing);
+        if (wxGetApp().mainframe->send_to_flashforge_cloud((dir / name).string(), name.string(), error))
+            return;
+    } catch (const std::exception& ex) {
+        error = ex.what();
+    }
+    show_error(this, format_wxstr(_L("Cannot send to the Flashforge printer: %1%"), error), false);
+}
+
 int Plater::send_gcode(int plate_idx, Export3mfProgressFn proFn)
 {
     int result = 0;
