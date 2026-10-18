@@ -58,7 +58,9 @@ using namespace nlohmann;
 
 namespace Slic3r {
 
-static const std::string VERSION_CHECK_URL = "https://check-version.orcaslicer.com/latest";
+// ArtIN3D: new versions are ArtIN3D releases on GitHub, not OrcaSlicer's: following Orca's
+// notice would install OrcaSlicer over ArtIN3D.
+static const std::string VERSION_CHECK_URL = "https://api.github.com/repos/gabrielvideiraadvogado-bit/ArtIN3D-Slicer/releases";
 static const std::string PROFILE_UPDATE_URL = "https://check-version.orcaslicer.com/profile";
 
 constexpr const char* CONFIG_ORCA_UPDATER_URL = "orca_updater_url";

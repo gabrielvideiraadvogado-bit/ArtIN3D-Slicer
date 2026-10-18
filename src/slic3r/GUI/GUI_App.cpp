@@ -6403,7 +6403,9 @@ void GUI_App::check_new_version_sf(bool show_tips, int by_user)
         detect_updater_os_info()
     };
 
-    const std::string query_string = build_updater_query(query);
+    // ArtIN3D: the installation id and system details are for Orca's own update service only.
+    const bool        orca_service = version_check_url.find("orcaslicer.com") != std::string::npos;
+    const std::string query_string = orca_service ? build_updater_query(query) : std::string();
     if (!query_string.empty()) {
         const bool has_query = version_check_url.find('?') != std::string::npos;
         if (!has_query)
@@ -6414,7 +6416,8 @@ void GUI_App::check_new_version_sf(bool show_tips, int by_user)
     }
 
     auto http = Http::get(version_check_url);
-    maybe_attach_updater_signature(http, query_string, version_check_url);
+    if (orca_service)
+        maybe_attach_updater_signature(http, query_string, version_check_url);
 
     http.header("accept", "application/vnd.github.v3+json")
         .timeout_connect(5)
