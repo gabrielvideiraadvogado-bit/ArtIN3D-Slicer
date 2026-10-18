@@ -1,7 +1,7 @@
 {
 	"name": "Flashforge",
 	"url": "",
-	"version": "02.04.00.11",
+	"version": "02.04.00.12",
 	"force_update": "0",
 	"description": "Flashforge configurations",
 	"machine_model_list": [
@@ -502,6 +502,18 @@
 		{
 			"name": "0.14mm Standard @Flashforge AD5M Pro 0.25 Nozzle",
 			"sub_path": "process/0.14mm Standard @Flashforge AD5M Pro 0.25 Nozzle.json"
+		},
+		{
+			"name": "0.20mm Suporte @ArtIN3D AD5X",
+			"sub_path": "process/0.20mm Suporte @ArtIN3D AD5X.json"
+		},
+		{
+			"name": "0.20mm Gyroid @ArtIN3D AD5X",
+			"sub_path": "process/0.20mm Gyroid @ArtIN3D AD5X.json"
+		},
+		{
+			"name": "0.20mm TPU @ArtIN3D AD5X",
+			"sub_path": "process/0.20mm TPU @ArtIN3D AD5X.json"
 		},
 		{
 			"name": "0.24mm Draft @FF Adventurer A5 0.4 nozzle",
@@ -1626,6 +1638,10 @@
 			"sub_path": "filament/Flashforge ASA Basic @FF G4P 0.25 nozzle.json"
 		},
 		{
+			"name": "ABS Basic Gabriel @ArtIN3D AD5X",
+			"sub_path": "filament/ABS Basic Gabriel @ArtIN3D AD5X.json"
+		},
+		{
 			"name": "Flashforge ABS Basic @FF G4 HF",
 			"sub_path": "filament/Flashforge ABS Basic @FF G4 HF.json"
 		},
@@ -2366,6 +2382,10 @@
 			"sub_path": "filament/Flashforge R PLA @FF Adventurer A5 0.25 nozzle.json"
 		},
 		{
+			"name": "PLA Basic Gabriel @ArtIN3D AD5X",
+			"sub_path": "filament/PLA Basic Gabriel @ArtIN3D AD5X.json"
+		},
+		{
 			"name": "Generic PLA @FF Adventurer A5 0.25 nozzle",
 			"sub_path": "filament/Generic PLA @FF Adventurer A5 0.25 nozzle.json"
 		},
@@ -3024,6 +3044,14 @@
 		{
 			"name": "Generic TPU-95A @FF C5P",
 			"sub_path": "filament/Generic TPU-95A @FF C5P.json"
+		},
+		{
+			"name": "PETG Padrao Gabriel @ArtIN3D AD5X",
+			"sub_path": "filament/PETG Padrao Gabriel @ArtIN3D AD5X.json"
+		},
+		{
+			"name": "PLA Generico Gabriel @ArtIN3D AD5X",
+			"sub_path": "filament/PLA Generico Gabriel @ArtIN3D AD5X.json"
 		}
 	],
 	"machine_list": [
